@@ -95,28 +95,45 @@ class Operand:
 @x86
 class Reg(Operand):
     index: int
-    name: str
 
     def __repr__(self):
-        return self.name
+        names = (
+            "rax",
+            "rcx",
+            "rdx",
+            "rbx",
+            "rsp",
+            "rbp",
+            "rsi",
+            "rdi",
+            "r8",
+            "r9",
+            "r10",
+            "r11",
+            "r12",
+            "r13",
+            "r14",
+            "r15",
+        )
+        return names[self.index]
 
 
-RAX = Reg(0, "rax")
-RCX = Reg(1, "rcx")
-RDX = Reg(2, "rdx")
-RBX = Reg(3, "rbx")
-RSP = Reg(4, "rsp")
-RBP = Reg(5, "rbp")
-RSI = Reg(6, "rsi")
-RDI = Reg(7, "rdi")
-R8 = Reg(8, "r8")
-R9 = Reg(9, "r9")
-R10 = Reg(10, "r10")
-R11 = Reg(11, "r11")
-R12 = Reg(12, "r12")
-R13 = Reg(13, "r13")
-R14 = Reg(14, "r14")
-R15 = Reg(15, "r15")
+RAX = Reg(0)
+RCX = Reg(1)
+RDX = Reg(2)
+RBX = Reg(3)
+RSP = Reg(4)
+RBP = Reg(5)
+RSI = Reg(6)
+RDI = Reg(7)
+R8 = Reg(8)
+R9 = Reg(9)
+R10 = Reg(10)
+R11 = Reg(11)
+R12 = Reg(12)
+R13 = Reg(13)
+R14 = Reg(14)
+R15 = Reg(15)
 
 
 @x86
