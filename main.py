@@ -215,6 +215,36 @@ def regalloc(ops):
     return code
 
 
+class Simulator:
+    def __init__(self):
+        self.regs = [0] * 16
+        self.stack = bytearray([0] * 256)
+        self.code = []
+
+    def load(self, code):
+        self.code = code
+
+    def run(self):
+        for op in self.code:
+            self.run_one(op)
+
+    def run_one(self, op):
+        if isinstance(op, X86.Mov):
+            if isinstance(op.dst, Reg):
+                if isinstance(op.src, Imm):
+                    self.regs[op.dst.index] = op.src.value
+                elif isinstance(op.src, Reg):
+                    self.regs[op.dst.index] = self.regs[op.src.index]
+                else:
+                    assert isinstance(op.src, Imm), "non-imm src unsupported"
+            else:
+                assert isinstance(op.dst, Reg), "non-reg dst unsupported"
+        else:
+            raise NotImplementedError(op)
+            # if isinstance(op.dst, Mem) and isinstance(op.dst, Imm):
+            #     assert op.dst.base == RSP, "Non-stack memory unsupported"
+
+
 class IrTests(unittest.TestCase):
     def setUp(self):
         reset_instr_counter()
@@ -285,6 +315,37 @@ class RegAllocTests(IrTests):
                 "X86.Mov(dst=[rsp-24], src=rax)",
             ],
         )
+
+
+class SimTests(unittest.TestCase):
+    def test_mov_reg_imm(self):
+        sim = Simulator()
+        sim.load([X86.Mov(RAX, Imm(123))])
+        sim.run()
+        self.assertEqual(sim.regs[RAX.index], 123)
+
+    def test_mov_reg_imm_overwrite(self):
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(RCX, Imm(123)),
+                X86.Mov(RCX, Imm(456)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.regs[RCX.index], 456)
+
+    def test_mov_reg_reg(self):
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(RAX, Imm(123)),
+                X86.Mov(RCX, RAX),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.regs[RAX.index], 123)
+        self.assertEqual(sim.regs[RCX.index], 123)
 
 
 if __name__ == "__main__":
