@@ -199,6 +199,14 @@ class X86:
         dst: Operand
         src: Operand
 
+    @x86
+    class Push(X86Instr):
+        src: Operand
+
+    @x86
+    class Pop(X86Instr):
+        dst: Operand
+
 
 def regalloc(ops):
     stack = []
@@ -237,6 +245,7 @@ class Simulator:
         self.regs = [0] * 16
         self.stack = bytearray([0] * 256)
         self.code = []
+        self.regs[RSP.index] = -8
 
     def load(self, code):
         self.code = code
@@ -267,6 +276,16 @@ class Simulator:
         return int.from_bytes(
             self.stack[idx : idx + nbytes], byteorder="little", signed=signed
         )
+
+    def stack_push(self, value):
+        rsp = self.regs[RSP.index]
+        self.stack_write(rsp, value, nbytes=8)
+        self.regs[RSP.index] -= 8
+
+    def stack_pop(self, value):
+        self.regs[RSP.index] += 8
+        rsp = self.regs[RSP.index]
+        return self.stack_read(rsp, nbytes=8)
 
     def run_one(self, op):
         if isinstance(op, X86.Mov):
@@ -301,6 +320,17 @@ class Simulator:
                 )
             else:
                 raise NotImplementedError("only add reg, reg is supported")
+        elif isinstance(op, X86.Push):
+            if isinstance(op.src, Imm):
+                self.stack_push(op.src.value)
+            else:
+                raise NotImplementedError("push with non-imm")
+        elif isinstance(op, X86.Pop):
+            if isinstance(op.dst, Reg):
+                value = self.stack_pop(op.dst)
+                self.regs[op.dst.index] = value
+            else:
+                raise NotImplementedError("pop with non-reg")
         else:
             raise NotImplementedError(op)
 
@@ -545,6 +575,40 @@ class SimTests(unittest.TestCase):
         sim.run()
         self.assertEqual(sim.regs[RAX.index], 7)
         self.assertEqual(sim.regs[RCX.index], 4)
+
+    def test_rsp_points_to_beginning_of_frame(self):
+        sim = Simulator()
+        self.assertEqual(sim.regs[RSP.index], -8)
+
+    def test_push_imm(self):
+        off = -8
+        nbytes = 8
+        val = 3
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Push(Imm(val)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.regs[RSP.index], -16)
+
+    def test_pop_reg(self):
+        off = -8
+        nbytes = 8
+        val = 3
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Push(Imm(val)),
+                X86.Pop(RAX),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.regs[RSP.index], -8)
+        self.assertEqual(sim.regs[RAX.index], val)
 
 
 class EndToEndTests(unittest.TestCase):
