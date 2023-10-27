@@ -160,6 +160,21 @@ class BaseDisp(Mem):
 class Imm(Operand):
     value: int
 
+    def size(self):
+        bl = self.value.bit_length()
+        if bl <= 8:
+            return 8
+        if bl <= 16:
+            return 16
+        if bl <= 32:
+            return 32
+        if bl <= 64:
+            return 64
+        raise NotImplementedError(f"const {self.value} too big")
+
+    def as_bytes(self):
+        return self.value.to_bytes(self.size(), byteorder="little", signed=True)
+
     def __repr__(self):
         return f"Imm({self.value})"
 
@@ -228,6 +243,22 @@ class Simulator:
         for op in self.code:
             self.run_one(op)
 
+    def stack_write_imm(self, idx, imm):
+        assert idx < 0, "Cannot read before stack frame"
+        # The stack is backwards/upside-down...
+        idx = -idx
+        bs = imm.as_bytes()
+        assert imm.size() == len(bs)
+        self.stack[idx : idx + imm.size()] = bs
+
+    def stack_read(self, idx, nbytes, signed=True):
+        assert idx < 0, "Cannot read before stack frame"
+        # The stack is backwards/upside-down...
+        idx = -idx
+        return int.from_bytes(
+            self.stack[idx : idx + nbytes], byteorder="little", signed=signed
+        )
+
     def run_one(self, op):
         if isinstance(op, X86.Mov):
             if isinstance(op.dst, Reg):
@@ -237,12 +268,17 @@ class Simulator:
                     self.regs[op.dst.index] = self.regs[op.src.index]
                 else:
                     assert isinstance(op.src, Imm), "non-imm src unsupported"
+            elif isinstance(op.dst, Mem):
+                assert isinstance(op.dst, BaseDisp), "more complex memory not supported"
+                assert op.dst.base == RSP, "non-stack memory unsupported"
+                if isinstance(op.src, Imm):
+                    self.stack_write_imm(op.dst.disp, op.src)
+                else:
+                    raise NotImplementedError("non-imm src")
             else:
                 assert isinstance(op.dst, Reg), "non-reg dst unsupported"
         else:
             raise NotImplementedError(op)
-            # if isinstance(op.dst, Mem) and isinstance(op.dst, Imm):
-            #     assert op.dst.base == RSP, "Non-stack memory unsupported"
 
 
 class IrTests(unittest.TestCase):
@@ -346,6 +382,114 @@ class SimTests(unittest.TestCase):
         sim.run()
         self.assertEqual(sim.regs[RAX.index], 123)
         self.assertEqual(sim.regs[RCX.index], 123)
+
+    def test_mov_stack_imm8(self):
+        off = -8
+        nbytes = 1
+        val = 123
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(BaseDisp(RSP, off), Imm(val)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+
+    def test_mov_stack_negative_imm8(self):
+        off = -8
+        nbytes = 1
+        val = -123
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(BaseDisp(RSP, off), Imm(val)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+
+    def test_mov_stack_imm16(self):
+        off = -8
+        nbytes = 2
+        val = 2**8 + 1
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(BaseDisp(RSP, off), Imm(val)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+
+    def test_mov_stack_negative_imm16(self):
+        off = -8
+        nbytes = 2
+        val = -(2**8 + 1)
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(BaseDisp(RSP, off), Imm(val)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+
+    def test_mov_stack_imm32(self):
+        off = -8
+        nbytes = 4
+        val = 2**16 + 1
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(BaseDisp(RSP, off), Imm(val)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+
+    def test_mov_stack_negative_imm32(self):
+        off = -8
+        nbytes = 4
+        val = -(2**16 + 1)
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(BaseDisp(RSP, off), Imm(val)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+
+    def test_mov_stack_imm64(self):
+        off = -8
+        nbytes = 8
+        val = 2**32 + 1
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(BaseDisp(RSP, off), Imm(val)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+
+    def test_mov_stack_negative_imm64(self):
+        off = -8
+        nbytes = 8
+        val = -(2**32 + 1)
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(BaseDisp(RSP, off), Imm(val)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+
+    # TODO(max): Test misaligned reads and writes
+    # TODO(max): Test overlapping reads and writes
+
 
 
 if __name__ == "__main__":
