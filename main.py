@@ -84,31 +84,115 @@ def topo(self):
     return topo
 
 
+x86 = dataclass(eq=True, frozen=True)
+
+
+@x86
+class Operand:
+    pass
+
+
+@x86
+class Reg(Operand):
+    index: int
+    name: str
+
+    def __repr__(self):
+        return self.name
+
+
+RAX = Reg(0, "rax")
+RCX = Reg(1, "rcx")
+RDX = Reg(2, "rdx")
+RBX = Reg(3, "rbx")
+RSP = Reg(4, "rsp")
+RBP = Reg(5, "rbp")
+RSI = Reg(6, "rsi")
+RDI = Reg(7, "rdi")
+R8 = Reg(8, "r8")
+R9 = Reg(9, "r9")
+R10 = Reg(10, "r10")
+R11 = Reg(11, "r11")
+R12 = Reg(12, "r12")
+R13 = Reg(13, "r13")
+R14 = Reg(14, "r14")
+R15 = Reg(15, "r15")
+
+
+@x86
+class Mem(Operand):
+    base: Reg
+
+
+@x86
+class BaseDisp(Mem):
+    disp: int
+
+    def __repr__(self):
+        base = self.base
+        disp = self.disp
+        if self.disp == 0:
+            return f"[{base}]"
+        elif self.disp > 0:
+            return f"[{base}+{disp}]"
+        else:
+            return f"[{base}{disp}]"
+
+
+@x86
+class Imm(Operand):
+    value: int
+
+    def __repr__(self):
+        return f"Imm({self.value})"
+
+
+class X86:
+    @x86
+    class X86Instr:
+        pass
+
+    @x86
+    class Mov(X86Instr):
+        dst: Operand
+        src: Operand
+
+    @x86
+    class Add(X86Instr):
+        dst: Operand
+        src: Operand
+
+    @x86
+    class Mul(X86Instr):
+        dst: Operand
+        src: Operand
+
+
 def regalloc(ops):
     stack = []
     code = []
 
     def stack_at(idx):
         base = 8
-        return f"[rsp-{idx*8+base}]"
+        return BaseDisp(RSP, -(idx * 8 + base))
 
     for op in ops:
         if isinstance(op, Const):
             assert op not in stack
             idx = len(stack)
             stack.append(op)
-            code.append(f"mov {stack_at(idx)}, {op.value}")
+            code.append(X86.Mov(stack_at(idx), Imm(op.value)))
         elif isinstance(op, (Add, Mul)):
             assert op not in stack
             left = stack.index(op.left)
             right = stack.index(op.right)
             idx = len(stack)
             stack.append(op)
-            code.append(f"mov rax, {stack_at(left)}")
-            code.append(f"mov rcx, {stack_at(right)}")
-            opcode = {Add: "add", Mul: "mul"}[type(op)]
-            code.append(f"{opcode} rax, rcx")
-            code.append(f"mov {stack_at(idx)}, rax")
+            code.append(X86.Mov(RAX, stack_at(left)))
+            code.append(X86.Mov(RCX, stack_at(right)))
+            opcode = {Add: X86.Add, Mul: X86.Mul}[type(op)]
+            code.append(opcode(RAX, RCX))
+            code.append(X86.Mov(stack_at(idx), RAX))
         else:
             raise NotImplementedError(op)
     return code
@@ -150,23 +234,24 @@ class TopoTests(IrTests):
 class RegAllocTests(IrTests):
     def _alloc(self, exp):
         ops = topo(exp)
-        return regalloc(ops)
+        x86 = regalloc(ops)
+        return [str(op) for op in x86]
 
     def test_const(self):
         exp = Const(2)
-        self.assertEqual(self._alloc(exp), ["mov [rsp-8], 2"])
+        self.assertEqual(self._alloc(exp), ["X86.Mov(dst=[rsp-8], src=Imm(2))"])
 
     def test_add(self):
         exp = Add(Const(2), Const(3))
         self.assertEqual(
             self._alloc(exp),
             [
-                "mov [rsp-8], 2",
-                "mov [rsp-16], 3",
-                "mov rax, [rsp-8]",
-                "mov rcx, [rsp-16]",
-                "add rax, rcx",
-                "mov [rsp-24], rax",
+                "X86.Mov(dst=[rsp-8], src=Imm(2))",
+                "X86.Mov(dst=[rsp-16], src=Imm(3))",
+                "X86.Mov(dst=rax, src=[rsp-8])",
+                "X86.Mov(dst=rcx, src=[rsp-16])",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Mov(dst=[rsp-24], src=rax)",
             ],
         )
 
@@ -175,12 +260,12 @@ class RegAllocTests(IrTests):
         self.assertEqual(
             self._alloc(exp),
             [
-                "mov [rsp-8], 2",
-                "mov [rsp-16], 3",
-                "mov rax, [rsp-8]",
-                "mov rcx, [rsp-16]",
-                "mul rax, rcx",
-                "mov [rsp-24], rax",
+                "X86.Mov(dst=[rsp-8], src=Imm(2))",
+                "X86.Mov(dst=[rsp-16], src=Imm(3))",
+                "X86.Mov(dst=rax, src=[rsp-8])",
+                "X86.Mov(dst=rcx, src=[rsp-16])",
+                "X86.Mul(dst=rax, src=rcx)",
+                "X86.Mov(dst=[rsp-24], src=rax)",
             ],
         )
 
