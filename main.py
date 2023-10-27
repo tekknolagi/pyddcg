@@ -251,7 +251,7 @@ class Simulator:
         assert imm.size() == len(bs)
         self.stack[idx : idx + imm.size()] = bs
 
-    def stack_read(self, idx, nbytes, signed=True):
+    def stack_read(self, idx, nbytes, signed=False):
         assert idx < 0, "Cannot read before stack frame"
         # The stack is backwards/upside-down...
         idx = -idx
@@ -407,7 +407,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.stack_read(off, nbytes, signed=True), val)
 
     def test_mov_stack_imm16(self):
         off = -8
@@ -433,7 +433,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.stack_read(off, nbytes, signed=True), val)
 
     def test_mov_stack_imm32(self):
         off = -8
@@ -459,7 +459,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.stack_read(off, nbytes, signed=True), val)
 
     def test_mov_stack_imm64(self):
         off = -8
@@ -485,7 +485,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.stack_read(off, nbytes, signed=True), val)
 
     # TODO(max): Test misaligned reads and writes
     # TODO(max): Test overlapping reads and writes
