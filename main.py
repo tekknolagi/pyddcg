@@ -372,6 +372,13 @@ class Simulator:
                 )
             else:
                 raise NotImplementedError("only add reg, reg is supported")
+        elif isinstance(op, X86.Mul):
+            if isinstance(op.dst, Reg) and isinstance(op.src, Reg):
+                self.regs[op.dst.index] = (
+                    self.regs[op.dst.index] * self.regs[op.src.index]
+                )
+            else:
+                raise NotImplementedError("only mul reg, reg is supported")
         elif isinstance(op, X86.Push):
             if isinstance(op.src, Imm):
                 self.stack_push(op.src.value)
@@ -666,6 +673,19 @@ class SimTests(unittest.TestCase):
         self.assertEqual(sim.regs[RAX.index], 7)
         self.assertEqual(sim.regs[RCX.index], 4)
 
+    def test_mul_reg_reg(self):
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(RAX, Imm(3)),
+                X86.Mov(RCX, Imm(4)),
+                X86.Mul(RAX, RCX),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.regs[RAX.index], 12)
+        self.assertEqual(sim.regs[RCX.index], 4)
+
     def test_rsp_points_to_beginning_of_frame(self):
         sim = Simulator()
         self.assertEqual(sim.regs[RSP.index], -8)
@@ -712,6 +732,10 @@ class BaseEndToEndTests:
     def test_add(self):
         sim = self._run(Add(Const(3), Const(4)))
         self.assertEqual(sim.regs[RAX.index], 7)
+
+    def test_mul(self):
+        sim = self._run(Mul(Const(3), Const(4)))
+        self.assertEqual(sim.regs[RAX.index], 12)
 
 
 class BaselineEndToEndTests(BaseEndToEndTests, unittest.TestCase):
