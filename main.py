@@ -99,5 +99,23 @@ class RenderTests(IrTests):
         self.assertEqual(repr(exp), "v2 = Add v0, v1")
 
 
+class TopoTests(IrTests):
+    def _topo(self, exp):
+        ops = topo(exp)
+        return [str(op) for op in ops]
+
+    def test_const(self):
+        exp = Const(2)
+        self.assertEqual(self._topo(exp), ["v0 = 2"])
+
+    def test_add(self):
+        exp = Add(Const(2), Const(3))
+        self.assertEqual(self._topo(exp), ["v0 = 2", "v1 = 3", "v2 = Add v0, v1"])
+
+    def test_mul(self):
+        exp = Mul(Const(2), Const(3))
+        self.assertEqual(self._topo(exp), ["v0 = 2", "v1 = 3", "v2 = Mul v0, v1"])
+
+
 if __name__ == "__main__":
     unittest.main()
