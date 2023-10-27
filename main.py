@@ -227,6 +227,8 @@ def regalloc(ops):
             code.append(X86.Mov(stack_at(idx), RAX))
         else:
             raise NotImplementedError(op)
+    # Move the last result into RAX
+    code.append(X86.Mov(RAX, stack_at(stack.index(ops[-1]))))
     return code
 
 
@@ -266,6 +268,10 @@ class Simulator:
                     self.regs[op.dst.index] = op.src.value
                 elif isinstance(op.src, Reg):
                     self.regs[op.dst.index] = self.regs[op.src.index]
+                elif isinstance(op.src, Mem):
+                    assert isinstance(op.src, BaseDisp), "more complex memory not supported"
+                    # TODO(max): Get read size from register size
+                    self.regs[op.dst.index] = self.stack_read(op.src.disp, nbytes=8)
                 else:
                     assert isinstance(op.src, Imm), "non-imm src unsupported"
             elif isinstance(op.dst, Mem):
@@ -322,7 +328,10 @@ class RegAllocTests(IrTests):
 
     def test_const(self):
         exp = Const(2)
-        self.assertEqual(self._alloc(exp), ["X86.Mov(dst=[rsp-8], src=Imm(2))"])
+        self.assertEqual(
+            self._alloc(exp),
+            ["X86.Mov(dst=[rsp-8], src=Imm(2))", "X86.Mov(dst=rax, src=[rsp-8])"],
+        )
 
     def test_add(self):
         exp = Add(Const(2), Const(3))
@@ -335,6 +344,7 @@ class RegAllocTests(IrTests):
                 "X86.Mov(dst=rcx, src=[rsp-16])",
                 "X86.Add(dst=rax, src=rcx)",
                 "X86.Mov(dst=[rsp-24], src=rax)",
+                "X86.Mov(dst=rax, src=[rsp-24])",
             ],
         )
 
@@ -349,6 +359,7 @@ class RegAllocTests(IrTests):
                 "X86.Mov(dst=rcx, src=[rsp-16])",
                 "X86.Mul(dst=rax, src=rcx)",
                 "X86.Mov(dst=[rsp-24], src=rax)",
+                "X86.Mov(dst=rax, src=[rsp-24])",
             ],
         )
 
