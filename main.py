@@ -276,7 +276,9 @@ class Simulator:
                 elif isinstance(op.src, Reg):
                     self.regs[op.dst.index] = self.regs[op.src.index]
                 elif isinstance(op.src, Mem):
-                    assert isinstance(op.src, BaseDisp), "more complex memory not supported"
+                    assert isinstance(
+                        op.src, BaseDisp
+                    ), "more complex memory not supported"
                     # TODO(max): Get read size from register size
                     self.regs[op.dst.index] = self.stack_read(op.src.disp, nbytes=8)
                 else:
