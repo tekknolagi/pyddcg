@@ -84,6 +84,36 @@ def topo(self):
     return topo
 
 
+def regalloc(ops):
+    stack = []
+    code = []
+
+    def stack_at(idx):
+        base = 8
+        return f"[rsp-{idx*8+base}]"
+
+    for op in ops:
+        if isinstance(op, Const):
+            assert op not in stack
+            idx = len(stack)
+            stack.append(op)
+            code.append(f"mov {stack_at(idx)}, {op.value}")
+        elif isinstance(op, (Add, Mul)):
+            assert op not in stack
+            left = stack.index(op.left)
+            right = stack.index(op.right)
+            idx = len(stack)
+            stack.append(op)
+            code.append(f"mov rax, {stack_at(left)}")
+            code.append(f"mov rcx, {stack_at(right)}")
+            opcode = {Add: "add", Mul: "mul"}[type(op)]
+            code.append(f"{opcode} rax, rcx")
+            code.append(f"mov {stack_at(idx)}, rax")
+        else:
+            raise NotImplementedError(op)
+    return code
+
+
 class IrTests(unittest.TestCase):
     def setUp(self):
         reset_instr_counter()
@@ -115,6 +145,44 @@ class TopoTests(IrTests):
     def test_mul(self):
         exp = Mul(Const(2), Const(3))
         self.assertEqual(self._topo(exp), ["v0 = 2", "v1 = 3", "v2 = Mul v0, v1"])
+
+
+class RegAllocTests(IrTests):
+    def _alloc(self, exp):
+        ops = topo(exp)
+        return regalloc(ops)
+
+    def test_const(self):
+        exp = Const(2)
+        self.assertEqual(self._alloc(exp), ["mov [rsp-8], 2"])
+
+    def test_add(self):
+        exp = Add(Const(2), Const(3))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "mov [rsp-8], 2",
+                "mov [rsp-16], 3",
+                "mov rax, [rsp-8]",
+                "mov rcx, [rsp-16]",
+                "add rax, rcx",
+                "mov [rsp-24], rax",
+            ],
+        )
+
+    def test_mul(self):
+        exp = Mul(Const(2), Const(3))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "mov [rsp-8], 2",
+                "mov [rsp-16], 3",
+                "mov rax, [rsp-8]",
+                "mov rcx, [rsp-16]",
+                "mul rax, rcx",
+                "mov [rsp-24], rax",
+            ],
+        )
 
 
 if __name__ == "__main__":
