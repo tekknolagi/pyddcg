@@ -84,12 +84,12 @@ def topo(self):
     return topo
 
 
-class IrTest(unittest.TestCase):
+class IrTests(unittest.TestCase):
     def setUp(self):
         reset_instr_counter()
 
 
-class RenderTest(IrTest):
+class RenderTests(IrTests):
     def test_const(self):
         exp = Const(123)
         self.assertEqual(repr(exp), "v0 = 123")
