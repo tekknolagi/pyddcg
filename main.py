@@ -240,6 +240,58 @@ def regalloc(ops):
     return code
 
 
+class Dest:
+    STACK = 0
+    ACCUM = 1
+    NOWHERE = 2
+
+
+class DDCG:
+    def __init__(self):
+        self.code = []
+
+    def emit(self, op):
+        self.code.append(op)
+
+    def compile(self, exp):
+        self._compile(exp, Dest.ACCUM)
+
+    def _compile(self, exp, dst):
+        tmp = RCX
+        if isinstance(exp, Const):
+            self._plug_imm(dst, exp.value)
+        elif isinstance(exp, (Add, Mul)):
+            self._compile(exp.left, Dest.STACK)
+            self._compile(exp.right, Dest.ACCUM)
+            self.emit(X86.Pop(tmp))
+            opcode = {Add: X86.Add, Mul: X86.Mul}[type(exp)]
+            self.emit(opcode(RAX, tmp))
+            self._plug_reg(dst, RAX)
+        else:
+            raise NotImplementedError(exp)
+
+    def _plug_imm(self, dst, value):
+        if dst == Dest.STACK:
+            self.emit(X86.Push(Imm(value)))
+        elif dst == Dest.ACCUM:
+            self.emit(X86.Mov(RAX, Imm(value)))
+        else:
+            raise NotImplementedError
+
+    def _plug_reg(self, dst, reg):
+        if dst == Dest.STACK:
+            raise NotImplementedError
+            # self.emit(X86.Push(reg))
+        elif dst == Dest.ACCUM:
+            if reg == RAX:
+                pass
+            else:
+                raise NotImplementedError
+                # self.emit(X86.Mov(RAX, reg))
+        else:
+            raise NotImplementedError
+
+
 class Simulator:
     def __init__(self):
         self.regs = [0] * 16
@@ -408,6 +460,44 @@ class RegAllocTests(IrTests):
                 "X86.Mul(dst=rax, src=rcx)",
                 "X86.Mov(dst=[rsp-24], src=rax)",
                 "X86.Mov(dst=rax, src=[rsp-24])",
+            ],
+        )
+
+
+class DDCGTests(IrTests):
+    def _alloc(self, exp):
+        gen = DDCG()
+        gen.compile(exp)
+        return [str(op) for op in gen.code]
+
+    def test_const(self):
+        exp = Const(2)
+        self.assertEqual(
+            self._alloc(exp),
+            ["X86.Mov(dst=rax, src=Imm(2))"],
+        )
+
+    def test_add(self):
+        exp = Add(Const(2), Const(3))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Push(src=Imm(2))",
+                "X86.Mov(dst=rax, src=Imm(3))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+            ],
+        )
+
+    def test_mul(self):
+        exp = Mul(Const(2), Const(3))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Push(src=Imm(2))",
+                "X86.Mov(dst=rax, src=Imm(3))",
+                "X86.Pop(dst=rcx)",
+                "X86.Mul(dst=rax, src=rcx)",
             ],
         )
 
@@ -611,7 +701,20 @@ class SimTests(unittest.TestCase):
         self.assertEqual(sim.regs[RAX.index], val)
 
 
-class EndToEndTests(unittest.TestCase):
+class BaseEndToEndTests:
+    def _run(self, exp):
+        raise NotImplementedError("exercise your custom compiler!")
+
+    def test_const(self):
+        sim = self._run(Const(123))
+        self.assertEqual(sim.regs[RAX.index], 123)
+
+    def test_add(self):
+        sim = self._run(Add(Const(3), Const(4)))
+        self.assertEqual(sim.regs[RAX.index], 7)
+
+
+class BaselineEndToEndTests(BaseEndToEndTests, unittest.TestCase):
     def _run(self, exp):
         ops = topo(exp)
         x86 = regalloc(ops)
@@ -621,16 +724,16 @@ class EndToEndTests(unittest.TestCase):
         assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
         return sim
 
-    def test_const(self):
-        sim = self._run(Const(123))
-        self.assertEqual(sim.stack_read(-8, 4), 123)
 
-    def test_add(self):
-        sim = self._run(Add(Const(3), Const(4)))
-        self.assertEqual(sim.stack_read(-8, 8), 3)
-        self.assertEqual(sim.stack_read(-16, 8), 4)
-        self.assertEqual(sim.stack_read(-24, 8), 7)
-        self.assertEqual(sim.regs[RAX.index], 7)
+class DDCGEndToEndTests(BaseEndToEndTests, unittest.TestCase):
+    def _run(self, exp):
+        gen = DDCG()
+        gen.compile(exp)
+        sim = Simulator()
+        sim.load(gen.code)
+        sim.run()
+        assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
+        return sim
 
 
 if __name__ == "__main__":
