@@ -491,6 +491,20 @@ class SimTests(unittest.TestCase):
     # TODO(max): Test overlapping reads and writes
 
 
+class EndToEndTests(unittest.TestCase):
+    def _run(self, exp):
+        ops = topo(exp)
+        x86 = regalloc(ops)
+        sim = Simulator()
+        sim.load(x86)
+        sim.run()
+        assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
+        return sim
+
+    def test_const(self):
+        sim = self._run(Const(123))
+        self.assertEqual(sim.stack_read(-8, 4), 123)
+
 
 if __name__ == "__main__":
     unittest.main()
