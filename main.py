@@ -294,6 +294,13 @@ class Simulator:
                     raise NotImplementedError("non-imm src")
             else:
                 assert isinstance(op.dst, Reg), "non-reg dst unsupported"
+        elif isinstance(op, X86.Add):
+            if isinstance(op.dst, Reg) and isinstance(op.src, Reg):
+                self.regs[op.dst.index] = (
+                    self.regs[op.dst.index] + self.regs[op.src.index]
+                )
+            else:
+                raise NotImplementedError("only add reg, reg is supported")
         else:
             raise NotImplementedError(op)
 
@@ -526,6 +533,19 @@ class SimTests(unittest.TestCase):
         sim.run()
         self.assertEqual(sim.stack_read(off, nbytes), val)
 
+    def test_add_reg_reg(self):
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(RAX, Imm(3)),
+                X86.Mov(RCX, Imm(4)),
+                X86.Add(RAX, RCX),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.regs[RAX.index], 7)
+        self.assertEqual(sim.regs[RCX.index], 4)
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, exp):
@@ -540,6 +560,13 @@ class EndToEndTests(unittest.TestCase):
     def test_const(self):
         sim = self._run(Const(123))
         self.assertEqual(sim.stack_read(-8, 4), 123)
+
+    def test_add(self):
+        sim = self._run(Add(Const(3), Const(4)))
+        self.assertEqual(sim.stack_read(-8, 8), 3)
+        self.assertEqual(sim.stack_read(-16, 8), 4)
+        self.assertEqual(sim.stack_read(-24, 8), 7)
+        self.assertEqual(sim.regs[RAX.index], 7)
 
 
 if __name__ == "__main__":
