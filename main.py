@@ -253,6 +253,13 @@ class Simulator:
         assert imm.size() == len(bs)
         self.stack[idx : idx + imm.size()] = bs
 
+    def stack_write(self, idx, value, nbytes):
+        assert idx < 0, "Cannot read before stack frame"
+        # The stack is backwards/upside-down...
+        idx = -idx
+        bs = value.to_bytes(nbytes, byteorder="little", signed=True)
+        self.stack[idx : idx + nbytes] = bs
+
     def stack_read(self, idx, nbytes, signed=False):
         assert idx < 0, "Cannot read before stack frame"
         # The stack is backwards/upside-down...
@@ -279,6 +286,8 @@ class Simulator:
                 assert op.dst.base == RSP, "non-stack memory unsupported"
                 if isinstance(op.src, Imm):
                     self.stack_write_imm(op.dst.disp, op.src)
+                elif isinstance(op.src, Reg):
+                    self.stack_write(op.dst.disp, self.regs[op.src.index], nbytes=8)
                 else:
                     raise NotImplementedError("non-imm src")
             else:
@@ -500,6 +509,20 @@ class SimTests(unittest.TestCase):
 
     # TODO(max): Test misaligned reads and writes
     # TODO(max): Test overlapping reads and writes
+
+    def test_mov_stack_reg64(self):
+        off = -8
+        nbytes = 8
+        val = 123
+        sim = Simulator()
+        sim.load(
+            [
+                X86.Mov(RAX, Imm(val)),
+                X86.Mov(BaseDisp(RSP, off), RAX),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
 
 
 class EndToEndTests(unittest.TestCase):
