@@ -1,14 +1,21 @@
 import dataclasses
 import itertools
+import unittest
 from dataclasses import dataclass
 
 
 ir = dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
+instr_counter = itertools.count()
+
+
+def reset_instr_counter():
+    global instr_counter
+    instr_counter = itertools.count()
 
 
 @ir
 class Instr:
-    id: int = dataclasses.field(default_factory=itertools.count().__next__, init=False)
+    id: int = dataclasses.field(default_factory=lambda: next(instr_counter), init=False)
 
     def var(self):
         return f"v{self.id}"
@@ -77,10 +84,20 @@ def topo(self):
     return topo
 
 
+class IrTest(unittest.TestCase):
+    def setUp(self):
+        reset_instr_counter()
+
+
+class RenderTest(IrTest):
+    def test_const(self):
+        exp = Const(123)
+        self.assertEqual(repr(exp), "v0 = 123")
+
+    def test_add(self):
+        exp = Add(Const(2), Const(3))
+        self.assertEqual(repr(exp), "v2 = Add v0, v1")
+
+
 if __name__ == "__main__":
-    # exp = Add(Mul(Const(2), Const(3)), Mul(Const(4), Const(5)))
-    left = Array(tuple([Const(1), Const(2), Const(3)]))
-    right = Array(tuple([Const(4), Const(5), Const(6)]))
-    exp = Dot(left, right)
-    for op in topo(exp):
-        print(op)
+    unittest.main()
