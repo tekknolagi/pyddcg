@@ -387,6 +387,9 @@ class Simulator:
         elif isinstance(op, X86.Push):
             if isinstance(op.src, Imm):
                 self.stack_push(op.src.value)
+            elif isinstance(op.src, Reg):
+                value = self.reg(op.src)
+                self.stack_push(value)
             else:
                 raise NotImplementedError("push with non-imm")
         elif isinstance(op, X86.Pop):
@@ -703,6 +706,21 @@ class SimTests(unittest.TestCase):
         sim.load(
             [
                 X86.Push(Imm(val)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.reg(RSP), -16)
+
+    def test_push_reg(self):
+        off = -8
+        nbytes = 8
+        val = 3
+        sim = Simulator()
+        sim.regs[RAX.index] = val
+        sim.load(
+            [
+                X86.Push(RAX),
             ]
         )
         sim.run()
