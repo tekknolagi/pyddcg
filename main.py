@@ -371,16 +371,12 @@ class Simulator:
                 assert isinstance(op.dst, Reg), "non-reg dst unsupported"
         elif isinstance(op, X86.Add):
             if isinstance(op.dst, Reg) and isinstance(op.src, Reg):
-                self.regs[op.dst.index] = (
-                    self.reg(op.dst) + self.reg(op.src)
-                )
+                self.regs[op.dst.index] = self.reg(op.dst) + self.reg(op.src)
             else:
                 raise NotImplementedError("only add reg, reg is supported")
         elif isinstance(op, X86.Mul):
             if isinstance(op.dst, Reg) and isinstance(op.src, Reg):
-                self.regs[op.dst.index] = (
-                    self.reg(op.dst) * self.reg(op.src)
-                )
+                self.regs[op.dst.index] = self.reg(op.dst) * self.reg(op.src)
             else:
                 raise NotImplementedError("only mul reg, reg is supported")
         elif isinstance(op, X86.Push):
