@@ -731,9 +731,9 @@ class SimTests(unittest.TestCase):
         nbytes = 8
         val = 3
         sim = Simulator()
+        sim.stack_push(val)
         sim.load(
             [
-                X86.Push(Imm(val)),
                 X86.Pop(RAX),
             ]
         )
