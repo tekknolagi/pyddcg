@@ -295,6 +295,8 @@ class DDCG:
 class Simulator:
     def __init__(self):
         self.regs = [0] * 16
+        # TODO(max): Represent memory as contiguous array with RSP pointing at
+        # middle or something
         self.stack = bytearray([0] * 256)
         self.code = []
         self.regs[RSP.index] = -8
