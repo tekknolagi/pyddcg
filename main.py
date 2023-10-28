@@ -473,6 +473,34 @@ class RegAllocTests(IrTests):
             ],
         )
 
+    def test_mul_add(self):
+        exp = Mul(
+            Add(Const(1), Const(2)),
+            Add(Const(3), Const(4)),
+        )
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=[rsp-8], src=Imm(1))",
+                "X86.Mov(dst=[rsp-16], src=Imm(2))",
+                "X86.Mov(dst=rax, src=[rsp-8])",
+                "X86.Mov(dst=rcx, src=[rsp-16])",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Mov(dst=[rsp-24], src=rax)",
+                "X86.Mov(dst=[rsp-32], src=Imm(3))",
+                "X86.Mov(dst=[rsp-40], src=Imm(4))",
+                "X86.Mov(dst=rax, src=[rsp-32])",
+                "X86.Mov(dst=rcx, src=[rsp-40])",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Mov(dst=[rsp-48], src=rax)",
+                "X86.Mov(dst=rax, src=[rsp-24])",
+                "X86.Mov(dst=rcx, src=[rsp-48])",
+                "X86.Mul(dst=rax, src=rcx)",
+                "X86.Mov(dst=[rsp-56], src=rax)",
+                "X86.Mov(dst=rax, src=[rsp-56])",
+            ],
+        )
+
 
 class DDCGTests(IrTests):
     def _alloc(self, exp):
@@ -506,6 +534,28 @@ class DDCGTests(IrTests):
             [
                 "X86.Push(src=Imm(2))",
                 "X86.Mov(dst=rax, src=Imm(3))",
+                "X86.Pop(dst=rcx)",
+                "X86.Mul(dst=rax, src=rcx)",
+            ],
+        )
+
+    def test_mul_add(self):
+        exp = Mul(
+            Add(Const(1), Const(2)),
+            Add(Const(3), Const(4)),
+        )
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Push(src=Imm(1))",
+                "X86.Mov(dst=rax, src=Imm(2))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Push(src=rax)",
+                "X86.Push(src=Imm(3))",
+                "X86.Mov(dst=rax, src=Imm(4))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
                 "X86.Pop(dst=rcx)",
                 "X86.Mul(dst=rax, src=rcx)",
             ],
