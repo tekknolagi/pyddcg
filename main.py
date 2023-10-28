@@ -280,8 +280,7 @@ class DDCG:
 
     def _plug_reg(self, dst, reg):
         if dst == Dest.STACK:
-            raise NotImplementedError
-            # self.emit(X86.Push(reg))
+            self.emit(X86.Push(reg))
         elif dst == Dest.ACCUM:
             if reg == RAX:
                 pass
@@ -759,6 +758,15 @@ class BaseEndToEndTests:
     def test_mul(self):
         sim = self._run(Mul(Const(3), Const(4)))
         self.assertEqual(sim.reg(RAX), 12)
+
+    def test_mul_add(self):
+        sim = self._run(
+            Mul(
+                Add(Const(1), Const(2)),
+                Add(Const(3), Const(4)),
+            )
+        )
+        self.assertEqual(sim.reg(RAX), 21)
 
 
 class BaselineEndToEndTests(BaseEndToEndTests, unittest.TestCase):
