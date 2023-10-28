@@ -306,6 +306,9 @@ class Simulator:
         for op in self.code:
             self.run_one(op)
 
+    def reg(self, reg):
+        return self.regs[reg.index]
+
     def stack_write_imm(self, idx, imm):
         assert idx < 0, "Cannot read before stack frame"
         # The stack is backwards/upside-down...
@@ -330,13 +333,13 @@ class Simulator:
         )
 
     def stack_push(self, value):
-        rsp = self.regs[RSP.index]
+        rsp = self.reg(RSP)
         self.stack_write(rsp, value, nbytes=8)
         self.regs[RSP.index] -= 8
 
     def stack_pop(self, value):
         self.regs[RSP.index] += 8
-        rsp = self.regs[RSP.index]
+        rsp = self.reg(RSP)
         return self.stack_read(rsp, nbytes=8)
 
     def run_one(self, op):
@@ -345,7 +348,7 @@ class Simulator:
                 if isinstance(op.src, Imm):
                     self.regs[op.dst.index] = op.src.value
                 elif isinstance(op.src, Reg):
-                    self.regs[op.dst.index] = self.regs[op.src.index]
+                    self.regs[op.dst.index] = self.reg(op.src)
                 elif isinstance(op.src, Mem):
                     assert isinstance(
                         op.src, BaseDisp
@@ -360,7 +363,7 @@ class Simulator:
                 if isinstance(op.src, Imm):
                     self.stack_write_imm(op.dst.disp, op.src)
                 elif isinstance(op.src, Reg):
-                    self.stack_write(op.dst.disp, self.regs[op.src.index], nbytes=8)
+                    self.stack_write(op.dst.disp, self.reg(op.src), nbytes=8)
                 else:
                     raise NotImplementedError("non-imm src")
             else:
@@ -368,14 +371,14 @@ class Simulator:
         elif isinstance(op, X86.Add):
             if isinstance(op.dst, Reg) and isinstance(op.src, Reg):
                 self.regs[op.dst.index] = (
-                    self.regs[op.dst.index] + self.regs[op.src.index]
+                    self.reg(op.dst) + self.reg(op.src)
                 )
             else:
                 raise NotImplementedError("only add reg, reg is supported")
         elif isinstance(op, X86.Mul):
             if isinstance(op.dst, Reg) and isinstance(op.src, Reg):
                 self.regs[op.dst.index] = (
-                    self.regs[op.dst.index] * self.regs[op.src.index]
+                    self.reg(op.dst) * self.reg(op.src)
                 )
             else:
                 raise NotImplementedError("only mul reg, reg is supported")
@@ -514,7 +517,7 @@ class SimTests(unittest.TestCase):
         sim = Simulator()
         sim.load([X86.Mov(RAX, Imm(123))])
         sim.run()
-        self.assertEqual(sim.regs[RAX.index], 123)
+        self.assertEqual(sim.reg(RAX), 123)
 
     def test_mov_reg_imm_overwrite(self):
         sim = Simulator()
@@ -525,7 +528,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.regs[RCX.index], 456)
+        self.assertEqual(sim.reg(RCX), 456)
 
     def test_mov_reg_reg(self):
         sim = Simulator()
@@ -536,8 +539,8 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.regs[RAX.index], 123)
-        self.assertEqual(sim.regs[RCX.index], 123)
+        self.assertEqual(sim.reg(RAX), 123)
+        self.assertEqual(sim.reg(RCX), 123)
 
     def test_mov_stack_imm8(self):
         off = -8
@@ -670,8 +673,8 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.regs[RAX.index], 7)
-        self.assertEqual(sim.regs[RCX.index], 4)
+        self.assertEqual(sim.reg(RAX), 7)
+        self.assertEqual(sim.reg(RCX), 4)
 
     def test_mul_reg_reg(self):
         sim = Simulator()
@@ -683,12 +686,12 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.regs[RAX.index], 12)
-        self.assertEqual(sim.regs[RCX.index], 4)
+        self.assertEqual(sim.reg(RAX), 12)
+        self.assertEqual(sim.reg(RCX), 4)
 
     def test_rsp_points_to_beginning_of_frame(self):
         sim = Simulator()
-        self.assertEqual(sim.regs[RSP.index], -8)
+        self.assertEqual(sim.reg(RSP), -8)
 
     def test_push_imm(self):
         off = -8
@@ -702,7 +705,7 @@ class SimTests(unittest.TestCase):
         )
         sim.run()
         self.assertEqual(sim.stack_read(off, nbytes), val)
-        self.assertEqual(sim.regs[RSP.index], -16)
+        self.assertEqual(sim.reg(RSP), -16)
 
     def test_pop_reg(self):
         off = -8
@@ -717,8 +720,8 @@ class SimTests(unittest.TestCase):
         )
         sim.run()
         self.assertEqual(sim.stack_read(off, nbytes), val)
-        self.assertEqual(sim.regs[RSP.index], -8)
-        self.assertEqual(sim.regs[RAX.index], val)
+        self.assertEqual(sim.reg(RSP), -8)
+        self.assertEqual(sim.reg(RAX), val)
 
 
 class BaseEndToEndTests:
@@ -727,15 +730,15 @@ class BaseEndToEndTests:
 
     def test_const(self):
         sim = self._run(Const(123))
-        self.assertEqual(sim.regs[RAX.index], 123)
+        self.assertEqual(sim.reg(RAX), 123)
 
     def test_add(self):
         sim = self._run(Add(Const(3), Const(4)))
-        self.assertEqual(sim.regs[RAX.index], 7)
+        self.assertEqual(sim.reg(RAX), 7)
 
     def test_mul(self):
         sim = self._run(Mul(Const(3), Const(4)))
-        self.assertEqual(sim.regs[RAX.index], 12)
+        self.assertEqual(sim.reg(RAX), 12)
 
 
 class BaselineEndToEndTests(BaseEndToEndTests, unittest.TestCase):
