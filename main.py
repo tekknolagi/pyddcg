@@ -327,6 +327,13 @@ class DDCGStack:
         src = STACK_REGS[self.sp]
         self.emit(X86.Mov(dst, src))
 
+    def top_in_reg(self):
+        return self.sp <= len(STACK_REGS)
+
+    def top_reg(self):
+        assert self.top_in_reg()
+        return STACK_REGS[self.sp - 1]
+
     def _compile(self, exp, dst):
         tmp = RCX
         if isinstance(exp, Const):
@@ -334,9 +341,13 @@ class DDCGStack:
         elif isinstance(exp, (Add, Mul)):
             self._compile(exp.left, Dest.STACK)
             self._compile(exp.right, Dest.ACCUM)
-            self.pop(tmp)
             opcode = {Add: X86.Add, Mul: X86.Mul}[type(exp)]
-            self.emit(opcode(RAX, tmp))
+            if self.top_in_reg():
+                self.emit(opcode(RAX, self.top_reg()))
+                self.sp -= 1
+            else:
+                self.pop(tmp)
+                self.emit(opcode(RAX, tmp))
             self._plug_reg(dst, RAX)
         else:
             raise NotImplementedError(exp)
@@ -652,8 +663,7 @@ class DDCGStackTests(unittest.TestCase):
             [
                 "X86.Mov(dst=r8, src=Imm(2))",
                 "X86.Mov(dst=rax, src=Imm(3))",
-                "X86.Mov(dst=rcx, src=r8)",
-                "X86.Add(dst=rax, src=rcx)",
+                "X86.Add(dst=rax, src=r8)",
             ],
         )
 
@@ -671,10 +681,8 @@ class DDCGStackTests(unittest.TestCase):
                 "X86.Mov(dst=rax, src=Imm(5))",
                 "X86.Pop(dst=rcx)",
                 "X86.Add(dst=rax, src=rcx)",
-                "X86.Mov(dst=rcx, src=r9)",
-                "X86.Add(dst=rax, src=rcx)",
-                "X86.Mov(dst=rcx, src=r8)",
-                "X86.Add(dst=rax, src=rcx)",
+                "X86.Add(dst=rax, src=r9)",
+                "X86.Add(dst=rax, src=r8)",
             ],
         )
 
@@ -685,8 +693,7 @@ class DDCGStackTests(unittest.TestCase):
             [
                 "X86.Mov(dst=r8, src=Imm(2))",
                 "X86.Mov(dst=rax, src=Imm(3))",
-                "X86.Mov(dst=rcx, src=r8)",
-                "X86.Mul(dst=rax, src=rcx)",
+                "X86.Mul(dst=rax, src=r8)",
             ],
         )
 
@@ -700,15 +707,12 @@ class DDCGStackTests(unittest.TestCase):
             [
                 "X86.Mov(dst=r8, src=Imm(1))",
                 "X86.Mov(dst=rax, src=Imm(2))",
-                "X86.Mov(dst=rcx, src=r8)",
-                "X86.Add(dst=rax, src=rcx)",
+                "X86.Add(dst=rax, src=r8)",
                 "X86.Mov(dst=r8, src=rax)",
                 "X86.Mov(dst=r9, src=Imm(3))",
                 "X86.Mov(dst=rax, src=Imm(4))",
-                "X86.Mov(dst=rcx, src=r9)",
-                "X86.Add(dst=rax, src=rcx)",
-                "X86.Mov(dst=rcx, src=r8)",
-                "X86.Mul(dst=rax, src=rcx)",
+                "X86.Add(dst=rax, src=r9)",
+                "X86.Mul(dst=rax, src=r8)",
             ],
         )
 
