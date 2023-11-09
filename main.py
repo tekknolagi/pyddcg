@@ -307,21 +307,23 @@ class DDCGStack:
 
     def push(self, val):
         assert isinstance(val, (Reg, Imm)), f"unexpected value {val}"
-        can_push = self.sp < len(STACK_REGS)
-        if not can_push:
+        sp = self.sp
+        vreg_push = sp < len(STACK_REGS)
+        self.sp += 1
+        if not vreg_push:
             self.emit(X86.Push(val))
             return
-        dst = STACK_REGS[self.sp]
-        self.sp += 1
+        dst = STACK_REGS[sp]
         self.emit(X86.Mov(dst, val))
 
     def pop(self, dst):
         assert isinstance(dst, Reg), f"unexpected destination {dst}"
-        can_pop = self.sp > 0
-        if not can_pop:
+        assert self.sp > 0, f"stack underflow (sp is {self.sp})"
+        vreg_pop = self.sp <= len(STACK_REGS)
+        self.sp -= 1
+        if not vreg_pop:
             self.emit(X86.Pop(dst))
             return
-        self.sp -= 1
         src = STACK_REGS[self.sp]
         self.emit(X86.Mov(dst, src))
 
@@ -655,6 +657,27 @@ class DDCGStackTests(unittest.TestCase):
             ],
         )
 
+    def test_add_deep(self):
+        # This tests pushing and popping beyond the limits of our virtual
+        # stack.
+        assert len(STACK_REGS) == 2
+        exp = Add(Const(2), Add(Const(3), Add(Const(4), Const(5))))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=r8, src=Imm(2))",
+                "X86.Mov(dst=r9, src=Imm(3))",
+                "X86.Push(src=Imm(4))",
+                "X86.Mov(dst=rax, src=Imm(5))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Mov(dst=rcx, src=r9)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Mov(dst=rcx, src=r8)",
+                "X86.Add(dst=rax, src=rcx)",
+            ],
+        )
+
     def test_mul(self):
         exp = Mul(Const(2), Const(3))
         self.assertEqual(
@@ -974,6 +997,19 @@ class DDCGStackEndToEndTests(BaseEndToEndTests, unittest.TestCase):
         sim.run()
         assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
         return sim
+
+    def test_add_deep(self):
+        # This tests pushing and popping beyond the limits of our virtual
+        # stack.
+        assert len(STACK_REGS) == 2
+        exp = Add(Const(2), Add(Const(3), Add(Const(4), Const(5))))
+        gen = DDCGStack()
+        gen.compile(exp)
+        sim = Simulator()
+        sim.load(gen.code)
+        sim.run()
+        assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
+        self.assertEqual(sim.reg(RAX), 14)
 
 
 if __name__ == "__main__":
