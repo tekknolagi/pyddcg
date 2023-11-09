@@ -451,13 +451,29 @@ class Simulator:
             else:
                 assert isinstance(op.dst, Reg), "non-reg dst unsupported"
         elif isinstance(op, X86.Add):
-            if isinstance(op.dst, Reg) and isinstance(op.src, Reg):
+            if not isinstance(op.dst, Reg):
+                raise NotImplementedError(f"only reg dst is supported: {op.dst}")
+            if isinstance(op.src, Reg):
                 self.regs[op.dst.index] = self.reg(op.dst) + self.reg(op.src)
+            elif isinstance(op.src, Mem):
+                assert isinstance(op.src, BaseDisp), "more complex memory not supported"
+                assert op.src.base == RSP, "non-stack memory unsupported"
+                self.regs[op.dst.index] = self.reg(op.dst) + self.stack_read(
+                    op.src.disp, nbytes=8
+                )
             else:
-                raise NotImplementedError("only add reg, reg is supported")
+                raise NotImplementedError("only add reg, reg/mem is supported")
         elif isinstance(op, X86.Mul):
-            if isinstance(op.dst, Reg) and isinstance(op.src, Reg):
+            if not isinstance(op.dst, Reg):
+                raise NotImplementedError(f"only reg dst is supported: {op.dst}")
+            if isinstance(op.src, Reg):
                 self.regs[op.dst.index] = self.reg(op.dst) * self.reg(op.src)
+            elif isinstance(op.src, Mem):
+                assert isinstance(op.src, BaseDisp), "more complex memory not supported"
+                assert op.src.base == RSP, "non-stack memory unsupported"
+                self.regs[op.dst.index] = self.reg(op.dst) * self.stack_read(
+                    op.src.disp, nbytes=8
+                )
             else:
                 raise NotImplementedError("only mul reg, reg is supported")
         elif isinstance(op, X86.Push):
