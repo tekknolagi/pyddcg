@@ -430,7 +430,7 @@ class TopoTests(IrTests):
         self.assertEqual(self._topo(exp), ["v0 = 2", "v1 = 3", "v2 = Mul v0, v1"])
 
 
-class RegAllocTests(IrTests):
+class RegAllocTests(unittest.TestCase):
     def _alloc(self, exp):
         ops = topo(exp)
         x86 = regalloc(ops)
@@ -502,7 +502,7 @@ class RegAllocTests(IrTests):
         )
 
 
-class DDCGTests(IrTests):
+class DDCGTests(unittest.TestCase):
     def _alloc(self, exp):
         gen = DDCG()
         gen.compile(exp)
