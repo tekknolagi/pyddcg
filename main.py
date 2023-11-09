@@ -229,9 +229,8 @@ def regalloc(ops):
             idx = len(stack)
             stack.append(op)
             code.append(X86.Mov(RAX, stack_at(left)))
-            code.append(X86.Mov(RCX, stack_at(right)))
             opcode = {Add: X86.Add, Mul: X86.Mul}[type(op)]
-            code.append(opcode(RAX, RCX))
+            code.append(opcode(RAX, stack_at(right)))
             code.append(X86.Mov(stack_at(idx), RAX))
         else:
             raise NotImplementedError(op)
@@ -548,8 +547,7 @@ class RegAllocTests(unittest.TestCase):
                 "X86.Mov(dst=[rsp-8], src=Imm(2))",
                 "X86.Mov(dst=[rsp-16], src=Imm(3))",
                 "X86.Mov(dst=rax, src=[rsp-8])",
-                "X86.Mov(dst=rcx, src=[rsp-16])",
-                "X86.Add(dst=rax, src=rcx)",
+                "X86.Add(dst=rax, src=[rsp-16])",
                 "X86.Mov(dst=[rsp-24], src=rax)",
                 "X86.Mov(dst=rax, src=[rsp-24])",
             ],
@@ -563,8 +561,7 @@ class RegAllocTests(unittest.TestCase):
                 "X86.Mov(dst=[rsp-8], src=Imm(2))",
                 "X86.Mov(dst=[rsp-16], src=Imm(3))",
                 "X86.Mov(dst=rax, src=[rsp-8])",
-                "X86.Mov(dst=rcx, src=[rsp-16])",
-                "X86.Mul(dst=rax, src=rcx)",
+                "X86.Mul(dst=rax, src=[rsp-16])",
                 "X86.Mov(dst=[rsp-24], src=rax)",
                 "X86.Mov(dst=rax, src=[rsp-24])",
             ],
@@ -581,18 +578,15 @@ class RegAllocTests(unittest.TestCase):
                 "X86.Mov(dst=[rsp-8], src=Imm(1))",
                 "X86.Mov(dst=[rsp-16], src=Imm(2))",
                 "X86.Mov(dst=rax, src=[rsp-8])",
-                "X86.Mov(dst=rcx, src=[rsp-16])",
-                "X86.Add(dst=rax, src=rcx)",
+                "X86.Add(dst=rax, src=[rsp-16])",
                 "X86.Mov(dst=[rsp-24], src=rax)",
                 "X86.Mov(dst=[rsp-32], src=Imm(3))",
                 "X86.Mov(dst=[rsp-40], src=Imm(4))",
                 "X86.Mov(dst=rax, src=[rsp-32])",
-                "X86.Mov(dst=rcx, src=[rsp-40])",
-                "X86.Add(dst=rax, src=rcx)",
+                "X86.Add(dst=rax, src=[rsp-40])",
                 "X86.Mov(dst=[rsp-48], src=rax)",
                 "X86.Mov(dst=rax, src=[rsp-24])",
-                "X86.Mov(dst=rcx, src=[rsp-48])",
-                "X86.Mul(dst=rax, src=rcx)",
+                "X86.Mul(dst=rax, src=[rsp-48])",
                 "X86.Mov(dst=[rsp-56], src=rax)",
                 "X86.Mov(dst=rax, src=[rsp-56])",
             ],
