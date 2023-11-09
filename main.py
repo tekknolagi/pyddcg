@@ -239,6 +239,24 @@ def regalloc(ops):
     return code
 
 
+def naive(op):
+    if isinstance(op, Const):
+        return [X86.Mov(RAX, Imm(op.value))]
+    elif isinstance(op, (Add, Mul)):
+        right_code = naive(op.right)
+        left_code = naive(op.left)
+        opcode = {Add: X86.Add, Mul: X86.Mul}[type(op)]
+        return [
+            *right_code,
+            X86.Push(RAX),
+            *left_code,
+            # TODO(max): Use [RSP] but need to set up stack the right way
+            # (as array with RSP pointing into the middle) before that works
+            X86.Pop(RCX),
+            opcode(RAX, RCX),
+        ]
+
+
 class Dest:
     STACK = 0
     ACCUM = 1
@@ -589,6 +607,69 @@ class RegAllocTests(unittest.TestCase):
                 "X86.Mul(dst=rax, src=[rsp-48])",
                 "X86.Mov(dst=[rsp-56], src=rax)",
                 "X86.Mov(dst=rax, src=[rsp-56])",
+            ],
+        )
+
+
+class NaiveTests(unittest.TestCase):
+    def _alloc(self, exp):
+        x86 = naive(exp)
+        return [str(op) for op in x86]
+
+    def test_const(self):
+        exp = Const(2)
+        self.assertEqual(
+            self._alloc(exp),
+            ["X86.Mov(dst=rax, src=Imm(2))"],
+        )
+
+    def test_add(self):
+        exp = Add(Const(2), Const(3))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=rax, src=Imm(3))",
+                "X86.Push(src=rax)",
+                "X86.Mov(dst=rax, src=Imm(2))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+            ],
+        )
+
+    def test_mul(self):
+        exp = Mul(Const(2), Const(3))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=rax, src=Imm(3))",
+                "X86.Push(src=rax)",
+                "X86.Mov(dst=rax, src=Imm(2))",
+                "X86.Pop(dst=rcx)",
+                "X86.Mul(dst=rax, src=rcx)",
+            ],
+        )
+
+    def test_mul_add(self):
+        exp = Mul(
+            Add(Const(1), Const(2)),
+            Add(Const(3), Const(4)),
+        )
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=rax, src=Imm(4))",
+                "X86.Push(src=rax)",
+                "X86.Mov(dst=rax, src=Imm(3))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Push(src=rax)",
+                "X86.Mov(dst=rax, src=Imm(2))",
+                "X86.Push(src=rax)",
+                "X86.Mov(dst=rax, src=Imm(1))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Pop(dst=rcx)",
+                "X86.Mul(dst=rax, src=rcx)",
             ],
         )
 
@@ -984,6 +1065,16 @@ class BaselineEndToEndTests(BaseEndToEndTests, unittest.TestCase):
     def _run(self, exp):
         ops = topo(exp)
         x86 = regalloc(ops)
+        sim = Simulator()
+        sim.load(x86)
+        sim.run()
+        assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
+        return sim
+
+
+class NaiveEndToEndTests(BaseEndToEndTests, unittest.TestCase):
+    def _run(self, exp):
+        x86 = naive(exp)
         sim = Simulator()
         sim.load(x86)
         sim.run()
