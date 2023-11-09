@@ -291,6 +291,74 @@ class DDCG:
             raise NotImplementedError
 
 
+STACK_REGS = [R8, R9]
+
+
+class DDCGStack:
+    def __init__(self):
+        self.code = []
+        self.sp = 0
+
+    def emit(self, op):
+        self.code.append(op)
+
+    def compile(self, exp):
+        self._compile(exp, Dest.ACCUM)
+
+    def push(self, val):
+        assert isinstance(val, (Reg, Imm)), f"unexpected value {val}"
+        can_push = self.sp < len(STACK_REGS)
+        if not can_push:
+            self.emit(X86.Push(val))
+            return
+        dst = STACK_REGS[self.sp]
+        self.sp += 1
+        self.emit(X86.Mov(dst, val))
+
+    def pop(self, dst):
+        assert isinstance(dst, Reg), f"unexpected destination {dst}"
+        can_pop = self.sp > 0
+        if not can_pop:
+            self.emit(X86.Pop(dst))
+            return
+        self.sp -= 1
+        src = STACK_REGS[self.sp]
+        self.emit(X86.Mov(dst, src))
+
+    def _compile(self, exp, dst):
+        tmp = RCX
+        if isinstance(exp, Const):
+            self._plug_imm(dst, exp.value)
+        elif isinstance(exp, (Add, Mul)):
+            self._compile(exp.left, Dest.STACK)
+            self._compile(exp.right, Dest.ACCUM)
+            self.pop(tmp)
+            opcode = {Add: X86.Add, Mul: X86.Mul}[type(exp)]
+            self.emit(opcode(RAX, tmp))
+            self._plug_reg(dst, RAX)
+        else:
+            raise NotImplementedError(exp)
+
+    def _plug_imm(self, dst, value):
+        if dst == Dest.STACK:
+            self.push(Imm(value))
+        elif dst == Dest.ACCUM:
+            self.emit(X86.Mov(RAX, Imm(value)))
+        else:
+            raise NotImplementedError
+
+    def _plug_reg(self, dst, reg):
+        if dst == Dest.STACK:
+            self.push(reg)
+        elif dst == Dest.ACCUM:
+            if reg == RAX:
+                pass
+            else:
+                raise NotImplementedError
+        else:
+            raise NotImplementedError
+
+
 class Simulator:
     def __init__(self):
         self.regs = [0] * 16
@@ -557,6 +625,66 @@ class DDCGTests(unittest.TestCase):
                 "X86.Pop(dst=rcx)",
                 "X86.Add(dst=rax, src=rcx)",
                 "X86.Pop(dst=rcx)",
+                "X86.Mul(dst=rax, src=rcx)",
+            ],
+        )
+
+
+class DDCGStackTests(unittest.TestCase):
+    def _alloc(self, exp):
+        gen = DDCGStack()
+        gen.compile(exp)
+        return [str(op) for op in gen.code]
+
+    def test_const(self):
+        exp = Const(2)
+        self.assertEqual(
+            self._alloc(exp),
+            ["X86.Mov(dst=rax, src=Imm(2))"],
+        )
+
+    def test_add(self):
+        exp = Add(Const(2), Const(3))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=r8, src=Imm(2))",
+                "X86.Mov(dst=rax, src=Imm(3))",
+                "X86.Mov(dst=rcx, src=r8)",
+                "X86.Add(dst=rax, src=rcx)",
+            ],
+        )
+
+    def test_mul(self):
+        exp = Mul(Const(2), Const(3))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=r8, src=Imm(2))",
+                "X86.Mov(dst=rax, src=Imm(3))",
+                "X86.Mov(dst=rcx, src=r8)",
+                "X86.Mul(dst=rax, src=rcx)",
+            ],
+        )
+
+    def test_mul_add(self):
+        exp = Mul(
+            Add(Const(1), Const(2)),
+            Add(Const(3), Const(4)),
+        )
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=r8, src=Imm(1))",
+                "X86.Mov(dst=rax, src=Imm(2))",
+                "X86.Mov(dst=rcx, src=r8)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Mov(dst=r8, src=rax)",
+                "X86.Mov(dst=r9, src=Imm(3))",
+                "X86.Mov(dst=rax, src=Imm(4))",
+                "X86.Mov(dst=rcx, src=r9)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Mov(dst=rcx, src=r8)",
                 "X86.Mul(dst=rax, src=rcx)",
             ],
         )
@@ -829,6 +957,17 @@ class BaselineEndToEndTests(BaseEndToEndTests, unittest.TestCase):
 class DDCGEndToEndTests(BaseEndToEndTests, unittest.TestCase):
     def _run(self, exp):
         gen = DDCG()
+        gen.compile(exp)
+        sim = Simulator()
+        sim.load(gen.code)
+        sim.run()
+        assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
+        return sim
+
+
+class DDCGStackEndToEndTests(BaseEndToEndTests, unittest.TestCase):
+    def _run(self, exp):
+        gen = DDCGStack()
         gen.compile(exp)
         sim = Simulator()
         sim.load(gen.code)
