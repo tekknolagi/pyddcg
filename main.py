@@ -208,37 +208,6 @@ class X86:
         dst: Operand
 
 
-def regalloc(ops):
-    stack = []
-    code = []
-
-    def stack_at(idx):
-        base = 8
-        return BaseDisp(RSP, -(idx * 8 + base))
-
-    for op in ops:
-        if isinstance(op, Const):
-            assert op not in stack
-            idx = len(stack)
-            stack.append(op)
-            code.append(X86.Mov(stack_at(idx), Imm(op.value)))
-        elif isinstance(op, (Add, Mul)):
-            assert op not in stack
-            left = stack.index(op.left)
-            right = stack.index(op.right)
-            idx = len(stack)
-            stack.append(op)
-            code.append(X86.Mov(RAX, stack_at(left)))
-            opcode = {Add: X86.Add, Mul: X86.Mul}[type(op)]
-            code.append(opcode(RAX, stack_at(right)))
-            code.append(X86.Mov(stack_at(idx), RAX))
-        else:
-            raise NotImplementedError(op)
-    # Move the last result into RAX
-    code.append(X86.Mov(RAX, stack_at(stack.index(ops[-1]))))
-    return code
-
-
 def naive(op):
     if isinstance(op, Const):
         return [X86.Mov(RAX, Imm(op.value))]
@@ -542,73 +511,6 @@ class TopoTests(IrTests):
     def test_mul(self):
         exp = Mul(Const(2), Const(3))
         self.assertEqual(self._topo(exp), ["v0 = 2", "v1 = 3", "v2 = Mul v0, v1"])
-
-
-class RegAllocTests(unittest.TestCase):
-    def _alloc(self, exp):
-        ops = topo(exp)
-        x86 = regalloc(ops)
-        return [str(op) for op in x86]
-
-    def test_const(self):
-        exp = Const(2)
-        self.assertEqual(
-            self._alloc(exp),
-            ["X86.Mov(dst=[rsp-8], src=Imm(2))", "X86.Mov(dst=rax, src=[rsp-8])"],
-        )
-
-    def test_add(self):
-        exp = Add(Const(2), Const(3))
-        self.assertEqual(
-            self._alloc(exp),
-            [
-                "X86.Mov(dst=[rsp-8], src=Imm(2))",
-                "X86.Mov(dst=[rsp-16], src=Imm(3))",
-                "X86.Mov(dst=rax, src=[rsp-8])",
-                "X86.Add(dst=rax, src=[rsp-16])",
-                "X86.Mov(dst=[rsp-24], src=rax)",
-                "X86.Mov(dst=rax, src=[rsp-24])",
-            ],
-        )
-
-    def test_mul(self):
-        exp = Mul(Const(2), Const(3))
-        self.assertEqual(
-            self._alloc(exp),
-            [
-                "X86.Mov(dst=[rsp-8], src=Imm(2))",
-                "X86.Mov(dst=[rsp-16], src=Imm(3))",
-                "X86.Mov(dst=rax, src=[rsp-8])",
-                "X86.Mul(dst=rax, src=[rsp-16])",
-                "X86.Mov(dst=[rsp-24], src=rax)",
-                "X86.Mov(dst=rax, src=[rsp-24])",
-            ],
-        )
-
-    def test_mul_add(self):
-        exp = Mul(
-            Add(Const(1), Const(2)),
-            Add(Const(3), Const(4)),
-        )
-        self.assertEqual(
-            self._alloc(exp),
-            [
-                "X86.Mov(dst=[rsp-8], src=Imm(1))",
-                "X86.Mov(dst=[rsp-16], src=Imm(2))",
-                "X86.Mov(dst=rax, src=[rsp-8])",
-                "X86.Add(dst=rax, src=[rsp-16])",
-                "X86.Mov(dst=[rsp-24], src=rax)",
-                "X86.Mov(dst=[rsp-32], src=Imm(3))",
-                "X86.Mov(dst=[rsp-40], src=Imm(4))",
-                "X86.Mov(dst=rax, src=[rsp-32])",
-                "X86.Add(dst=rax, src=[rsp-40])",
-                "X86.Mov(dst=[rsp-48], src=rax)",
-                "X86.Mov(dst=rax, src=[rsp-24])",
-                "X86.Mul(dst=rax, src=[rsp-48])",
-                "X86.Mov(dst=[rsp-56], src=rax)",
-                "X86.Mov(dst=rax, src=[rsp-56])",
-            ],
-        )
 
 
 class NaiveTests(unittest.TestCase):
@@ -1059,17 +961,6 @@ class BaseEndToEndTests:
             )
         )
         self.assertEqual(sim.reg(RAX), 21)
-
-
-class BaselineEndToEndTests(BaseEndToEndTests, unittest.TestCase):
-    def _run(self, exp):
-        ops = topo(exp)
-        x86 = regalloc(ops)
-        sim = Simulator()
-        sim.load(x86)
-        sim.run()
-        assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
-        return sim
 
 
 class NaiveEndToEndTests(BaseEndToEndTests, unittest.TestCase):
