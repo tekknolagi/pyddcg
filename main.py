@@ -335,7 +335,6 @@ class DDCGStack:
         return STACK_REGS[self.sp - 1]
 
     def _compile(self, exp, dst):
-        tmp = RCX
         if isinstance(exp, Const):
             self._plug_imm(dst, exp.value)
         elif isinstance(exp, (Add, Mul)):
@@ -346,6 +345,7 @@ class DDCGStack:
                 self.emit(opcode(RAX, self.top_reg()))
                 self.sp -= 1
             else:
+                tmp = RCX
                 self.pop(tmp)
                 self.emit(opcode(RAX, tmp))
             self._plug_reg(dst, RAX)
