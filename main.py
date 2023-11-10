@@ -288,6 +288,50 @@ def ddcg_compile(code):
     return _ddcg_compile(code, Dest.ACCUM)
 
 
+REGS = [R8, R9, R10, R11]
+
+
+class DelayedDDCG:
+    def __init__(self):
+        self.code = []
+        self.free_registers = {reg: True for reg in REGS}
+
+    def _allocate_register(self):
+        for reg in REGS:
+            if self.free_registers[reg]:
+                self.free_registers[reg] = False
+                return reg
+        raise Exception("could not allocate register")
+
+    def _free_register(self, reg):
+        self.free_registers[reg] = True
+
+    def compile(self, exp):
+        result = self._compile(exp)
+        self.code.append(X86.Mov(RAX, result))
+
+    def _compile(self, exp):
+        tmp = RCX
+        if isinstance(exp, Const):
+            result = self._allocate_register()
+            self.code.append(X86.Mov(result, Imm(exp.value)))
+            return result
+        elif isinstance(exp, Add):
+            lhs = self._compile(exp.left)
+            rhs = self._compile(exp.right)
+            self.code.append(X86.Add(lhs, rhs))
+            self._free_register(rhs)
+            return lhs
+        elif isinstance(exp, Mul):
+            lhs = self._compile(exp.left)
+            rhs = self._compile(exp.right)
+            self.code.append(X86.Mul(lhs, rhs))
+            self._free_register(rhs)
+            return lhs
+        else:
+            raise NotImplementedError(exp)
+
+
 STACK_REGS = [R8, R9]
 
 
@@ -691,6 +735,83 @@ class DDCGTests(unittest.TestCase):
         )
 
 
+class DelayedDDCGTests(unittest.TestCase):
+    def _alloc(self, exp):
+        gen = DelayedDDCG()
+        gen.compile(exp)
+        x86 = gen.code
+        return [str(op) for op in x86]
+
+    def test_const(self):
+        exp = Const(2)
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=r8, src=Imm(2))",
+                "X86.Mov(dst=rax, src=r8)",
+            ],
+        )
+
+    def test_add(self):
+        exp = Add(Const(2), Const(3))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=r8, src=Imm(2))",
+                "X86.Mov(dst=r9, src=Imm(3))",
+                "X86.Add(dst=r8, src=r9)",
+                "X86.Mov(dst=rax, src=r8)",
+            ],
+        )
+
+    def test_mul(self):
+        exp = Mul(Const(2), Const(3))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=r8, src=Imm(2))",
+                "X86.Mov(dst=r9, src=Imm(3))",
+                "X86.Mul(dst=r8, src=r9)",
+                "X86.Mov(dst=rax, src=r8)",
+            ],
+        )
+
+    def test_mul_add(self):
+        exp = Mul(
+            Add(Const(1), Const(2)),
+            Add(Const(3), Const(4)),
+        )
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=r8, src=Imm(1))",
+                "X86.Mov(dst=r9, src=Imm(2))",
+                "X86.Add(dst=r8, src=r9)",
+                "X86.Mov(dst=r9, src=Imm(3))",
+                "X86.Mov(dst=r10, src=Imm(4))",
+                "X86.Add(dst=r9, src=r10)",
+                "X86.Mul(dst=r8, src=r9)",
+                "X86.Mov(dst=rax, src=r8)",
+            ],
+        )
+
+    def test_add_deep(self):
+        exp = Add(Const(2), Add(Const(3), Add(Const(4), Const(5))))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=r8, src=Imm(2))",
+                "X86.Mov(dst=r9, src=Imm(3))",
+                "X86.Mov(dst=r10, src=Imm(4))",
+                "X86.Mov(dst=r11, src=Imm(5))",
+                "X86.Add(dst=r10, src=r11)",
+                "X86.Add(dst=r9, src=r10)",
+                "X86.Add(dst=r8, src=r9)",
+                "X86.Mov(dst=rax, src=r8)",
+            ],
+        )
+
+
 class DDCGStackTests(unittest.TestCase):
     def _alloc(self, exp):
         gen = DDCGStack()
@@ -1028,6 +1149,13 @@ class NaiveCompilerEndToEndTests(BaseEndToEndTests, unittest.TestCase):
 class DDCGEndToEndTests(BaseEndToEndTests, unittest.TestCase):
     def _compile(self, exp):
         return ddcg_compile(exp)
+
+
+class DelayedDDCGEndToEndTests(BaseEndToEndTests, unittest.TestCase):
+    def _compile(self, exp):
+        gen = DelayedDDCG()
+        gen.compile(exp)
+        return gen.code
 
 
 class DDCGStackEndToEndTests(BaseEndToEndTests, unittest.TestCase):
