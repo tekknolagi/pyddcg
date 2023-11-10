@@ -239,49 +239,52 @@ class Dest:
     NOWHERE = 2
 
 
-class DDCG:
-    def __init__(self):
-        self.code = []
+def _plug_imm(dst, value):
+    if dst == Dest.STACK:
+        return [X86.Push(Imm(value))]
+    elif dst == Dest.ACCUM:
+        return [X86.Mov(RAX, Imm(value))]
+    else:
+        raise NotImplementedError
 
-    def emit(self, op):
-        self.code.append(op)
 
-    def compile(self, exp):
-        self._compile(exp, Dest.ACCUM)
+def _plug_reg(dst, reg):
+    if dst == Dest.STACK:
+        return [X86.Push(reg)]
+    elif dst == Dest.ACCUM:
+        if reg == RAX:
+            return []
+        return [X86.Mov(RAX, reg)]
+    else:
+        raise NotImplementedError
 
-    def _compile(self, exp, dst):
-        tmp = RCX
-        if isinstance(exp, Const):
-            self._plug_imm(dst, exp.value)
-        elif isinstance(exp, (Add, Mul)):
-            self._compile(exp.left, Dest.STACK)
-            self._compile(exp.right, Dest.ACCUM)
-            self.emit(X86.Pop(tmp))
-            opcode = {Add: X86.Add, Mul: X86.Mul}[type(exp)]
-            self.emit(opcode(RAX, tmp))
-            self._plug_reg(dst, RAX)
-        else:
-            raise NotImplementedError(exp)
 
-    def _plug_imm(self, dst, value):
-        if dst == Dest.STACK:
-            self.emit(X86.Push(Imm(value)))
-        elif dst == Dest.ACCUM:
-            self.emit(X86.Mov(RAX, Imm(value)))
-        else:
-            raise NotImplementedError
+def _ddcg_compile(exp, dst):
+    tmp = RCX
+    if isinstance(exp, Const):
+        return _plug_imm(dst, exp.value)
+    elif isinstance(exp, Add):
+        return [
+            *_ddcg_compile(exp.left, Dest.STACK),
+            *_ddcg_compile(exp.right, Dest.ACCUM),
+            X86.Pop(tmp),
+            X86.Add(RAX, tmp),
+            *_plug_reg(dst, RAX),
+        ]
+    elif isinstance(exp, Mul):
+        return [
+            *_ddcg_compile(exp.left, Dest.STACK),
+            *_ddcg_compile(exp.right, Dest.ACCUM),
+            X86.Pop(tmp),
+            X86.Mul(RAX, tmp),
+            *_plug_reg(dst, RAX),
+        ]
+    else:
+        raise NotImplementedError(exp)
 
-    def _plug_reg(self, dst, reg):
-        if dst == Dest.STACK:
-            self.emit(X86.Push(reg))
-        elif dst == Dest.ACCUM:
-            if reg == RAX:
-                pass
-            else:
-                raise NotImplementedError
-                # self.emit(X86.Mov(RAX, reg))
-        else:
-            raise NotImplementedError
+
+def ddcg_compile(code):
+    return _ddcg_compile(code, Dest.ACCUM)
 
 
 STACK_REGS = [R8, R9]
@@ -591,9 +594,8 @@ class NaiveCompilerTests(unittest.TestCase):
 
 class DDCGTests(unittest.TestCase):
     def _alloc(self, exp):
-        gen = DDCG()
-        gen.compile(exp)
-        return [str(op) for op in gen.code]
+        x86 = ddcg_compile(exp)
+        return [str(op) for op in x86]
 
     def test_const(self):
         exp = Const(2)
@@ -985,9 +987,7 @@ class NaiveCompilerEndToEndTests(BaseEndToEndTests, unittest.TestCase):
 
 class DDCGEndToEndTests(BaseEndToEndTests, unittest.TestCase):
     def _compile(self, exp):
-        gen = DDCG()
-        gen.compile(exp)
-        return gen.code
+        return ddcg_compile(exp)
 
 
 class DDCGStackEndToEndTests(BaseEndToEndTests, unittest.TestCase):
