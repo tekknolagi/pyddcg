@@ -206,20 +206,31 @@ class X86:
         dst: Operand
 
 
-def naive_compile(op):
-    if isinstance(op, Const):
-        return [X86.Mov(RAX, Imm(op.value))]
-    elif isinstance(op, (Add, Mul)):
-        right_code = naive_compile(op.right)
-        left_code = naive_compile(op.left)
-        opcode = {Add: X86.Add, Mul: X86.Mul}[type(op)]
+def naive_compile(exp):
+    if isinstance(exp, Const):
+        return [X86.Mov(RAX, Imm(exp.value))]
+    elif isinstance(exp, Add):
+        right_code = naive_compile(exp.right)
+        left_code = naive_compile(exp.left)
         return [
             *right_code,
             X86.Push(RAX),
             *left_code,
             X86.Pop(RCX),
-            opcode(RAX, RCX),
+            X86.Add(RAX, RCX),
         ]
+    elif isinstance(exp, (Add, Mul)):
+        right_code = naive_compile(exp.right)
+        left_code = naive_compile(exp.left)
+        return [
+            *right_code,
+            X86.Push(RAX),
+            *left_code,
+            X86.Pop(RCX),
+            X86.Mul(RAX, RCX),
+        ]
+    else:
+        raise NotImplementedError(f"unexpected exp {exp}")
 
 
 class Dest:
