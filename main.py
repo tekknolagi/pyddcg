@@ -20,17 +20,13 @@ class Instr:
     def var(self):
         return f"v{self.id}"
 
-    def children(self):
-        return tuple(
-            getattr(self, name)
-            for name, field in self.__dataclass_fields__.items()
-            if issubclass(field.type, Instr)
-        )
+    def operands(self):
+        return ()
 
     def __repr__(self):
         op = self.__class__.__name__
         return (
-            f"{self.var()} = {op} {', '.join(child.var() for child in self.children())}"
+            f"{self.var()} = {op} {', '.join(child.var() for child in self.operands())}"
         )
 
 
@@ -46,20 +42,27 @@ class Const(Instr):
 class Array(Instr):
     value: tuple[Instr]
 
-    def children(self):
+    def operands(self):
         return self.value
 
 
 @ir
-class Add(Instr):
+class Binary(Instr):
     left: Instr
     right: Instr
+
+    def operands(self):
+        return (self.left, self.right)
 
 
 @ir
-class Mul(Instr):
-    left: Instr
-    right: Instr
+class Add(Binary):
+    pass
+
+
+@ir
+class Mul(Binary):
+    pass
 
 
 @ir
