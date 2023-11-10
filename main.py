@@ -68,6 +68,21 @@ class Dot(Instr):
     right: Array
 
 
+def eval_exp(exp):
+    if isinstance(exp, Const):
+        return exp.value
+    elif isinstance(exp, Add):
+        left = eval_exp(exp.left)
+        right = eval_exp(exp.right)
+        return left + right
+    elif isinstance(exp, Mul):
+        left = eval_exp(exp.left)
+        right = eval_exp(exp.right)
+        return left * right
+    else:
+        raise NotImplementedError(f"unexpected exp {exp}")
+
+
 def topo(self):
     # topological order all of the children in the graph
     topo = []
@@ -490,6 +505,27 @@ class RenderTests(IrTests):
     def test_add(self):
         exp = Add(Const(2), Const(3))
         self.assertEqual(repr(exp), "v2 = Add v0, v1")
+
+
+class EvalTests(unittest.TestCase):
+    def test_const(self):
+        exp = Const(2)
+        self.assertEqual(eval_exp(exp), 2)
+
+    def test_add(self):
+        exp = Add(Const(2), Const(3))
+        self.assertEqual(eval_exp(exp), 5)
+
+    def test_mul(self):
+        exp = Mul(Const(2), Const(3))
+        self.assertEqual(eval_exp(exp), 6)
+
+    def test_mul_add(self):
+        exp = Mul(
+            Add(Const(1), Const(2)),
+            Add(Const(3), Const(4)),
+        )
+        self.assertEqual(eval_exp(exp), 21)
 
 
 class TopoTests(IrTests):
@@ -962,6 +998,7 @@ class NaiveEndToEndTests(BaseEndToEndTests, unittest.TestCase):
         sim = Simulator()
         sim.load(x86)
         sim.run()
+        self.assertEqual(sim.reg(RAX), eval_exp(exp))
         assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
         return sim
 
@@ -973,6 +1010,7 @@ class DDCGEndToEndTests(BaseEndToEndTests, unittest.TestCase):
         sim = Simulator()
         sim.load(gen.code)
         sim.run()
+        self.assertEqual(sim.reg(RAX), eval_exp(exp))
         assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
         return sim
 
@@ -984,6 +1022,7 @@ class DDCGStackEndToEndTests(BaseEndToEndTests, unittest.TestCase):
         sim = Simulator()
         sim.load(gen.code)
         sim.run()
+        self.assertEqual(sim.reg(RAX), eval_exp(exp))
         assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
         return sim
 
@@ -997,6 +1036,7 @@ class DDCGStackEndToEndTests(BaseEndToEndTests, unittest.TestCase):
         sim = Simulator()
         sim.load(gen.code)
         sim.run()
+        self.assertEqual(sim.reg(RAX), eval_exp(exp))
         assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
         self.assertEqual(sim.reg(RAX), 14)
 
