@@ -288,7 +288,20 @@ def ddcg_compile(code):
     return _ddcg_compile(code, Dest.ACCUM)
 
 
-REGS = [R8, R9, R10, R11]
+REGS = [R8, R9]
+
+
+class DelayedDest:
+    pass
+
+
+class RegDest(DelayedDest):
+    def __init__(self, reg):
+        self.reg = reg
+
+
+class FreshOrImm(DelayedDest):
+    pass
 
 
 class DelayedDDCG:
@@ -308,9 +321,7 @@ class DelayedDDCG:
         self.free_registers[reg] = True
 
     def compile(self, exp):
-        result = self._compile(exp)
-        self.code.append(X86.Mov(RAX, result))
-        return RAX
+        return self._compile(exp, RegDest(RAX))
 
     def _emit_as_register(self, op):
         if isinstance(op, Reg):
@@ -319,13 +330,15 @@ class DelayedDDCG:
         self.code.append(X86.Mov(result, op))
         return result
 
-    def _compile(self, exp):
+    def _compile(self, exp, dst):
         if isinstance(exp, Const):
-            return Imm(exp.value)
+            return self._plug_imm(dst, Imm(exp.value))
         elif isinstance(exp, Add):
-            lhs = self._compile(exp.left)
+            lhs = self._compile(exp.left, dst)
+            # If the given destination was an immediate, we need to put it in a
+            # register.
             lhs = self._emit_as_register(lhs)
-            rhs = self._compile(exp.right)
+            rhs = self._compile(exp.right, FreshOrImm())
             if isinstance(rhs, Imm) and rhs.value < 0x100:
                 self.code.append(X86.Add(lhs, rhs))
             else:
@@ -334,9 +347,11 @@ class DelayedDDCG:
                 self._free_register(rhs)
             return lhs
         elif isinstance(exp, Mul):
-            lhs = self._compile(exp.left)
+            lhs = self._compile(exp.left, dst)
+            # If the given destination was an immediate, we need to put it in a
+            # register.
             lhs = self._emit_as_register(lhs)
-            rhs = self._compile(exp.right)
+            rhs = self._compile(exp.right, FreshOrImm())
             if isinstance(rhs, Imm) and rhs.value < 0x100:
                 self.code.append(X86.Mul(lhs, rhs))
             else:
@@ -346,6 +361,15 @@ class DelayedDDCG:
             return lhs
         else:
             raise NotImplementedError(exp)
+
+    def _plug_imm(self, dst, imm):
+        if isinstance(dst, RegDest):
+            self.code.append(X86.Mov(dst.reg, imm))
+            return dst.reg
+        elif isinstance(dst, FreshOrImm):
+            return imm
+        else:
+            raise NotImplementedError
 
 
 STACK_REGS = [R8, R9]
@@ -776,9 +800,8 @@ class DelayedDDCGTests(unittest.TestCase):
         self.assertEqual(
             self._alloc(exp),
             [
-                "X86.Mov(dst=r8, src=Imm(2))",
-                "X86.Add(dst=r8, src=Imm(3))",
-                "X86.Mov(dst=rax, src=r8)",
+                "X86.Mov(dst=rax, src=Imm(2))",
+                "X86.Add(dst=rax, src=Imm(3))",
             ],
         )
 
@@ -787,9 +810,8 @@ class DelayedDDCGTests(unittest.TestCase):
         self.assertEqual(
             self._alloc(exp),
             [
-                "X86.Mov(dst=r8, src=Imm(2))",
-                "X86.Mul(dst=r8, src=Imm(3))",
-                "X86.Mov(dst=rax, src=r8)",
+                "X86.Mov(dst=rax, src=Imm(2))",
+                "X86.Mul(dst=rax, src=Imm(3))",
             ],
         )
 
@@ -801,12 +823,11 @@ class DelayedDDCGTests(unittest.TestCase):
         self.assertEqual(
             self._alloc(exp),
             [
-                "X86.Mov(dst=r8, src=Imm(1))",
-                "X86.Add(dst=r8, src=Imm(2))",
-                "X86.Mov(dst=r9, src=Imm(3))",
-                "X86.Add(dst=r9, src=Imm(4))",
-                "X86.Mul(dst=r8, src=r9)",
-                "X86.Mov(dst=rax, src=r8)",
+                "X86.Mov(dst=rax, src=Imm(1))",
+                "X86.Add(dst=rax, src=Imm(2))",
+                "X86.Mov(dst=r8, src=Imm(3))",
+                "X86.Add(dst=r8, src=Imm(4))",
+                "X86.Mul(dst=rax, src=r8)",
             ],
         )
 
@@ -815,13 +836,12 @@ class DelayedDDCGTests(unittest.TestCase):
         self.assertEqual(
             self._alloc(exp),
             [
-                "X86.Mov(dst=r8, src=Imm(2))",
-                "X86.Mov(dst=r9, src=Imm(3))",
-                "X86.Mov(dst=r10, src=Imm(4))",
-                "X86.Add(dst=r10, src=Imm(5))",
-                "X86.Add(dst=r9, src=r10)",
+                "X86.Mov(dst=rax, src=Imm(2))",
+                "X86.Mov(dst=r8, src=Imm(3))",
+                "X86.Mov(dst=r9, src=Imm(4))",
+                "X86.Add(dst=r9, src=Imm(5))",
                 "X86.Add(dst=r8, src=r9)",
-                "X86.Mov(dst=rax, src=r8)",
+                "X86.Add(dst=rax, src=r8)",
             ],
         )
 
