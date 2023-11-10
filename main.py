@@ -206,12 +206,12 @@ class X86:
         dst: Operand
 
 
-def naive(op):
+def naive_compile(op):
     if isinstance(op, Const):
         return [X86.Mov(RAX, Imm(op.value))]
     elif isinstance(op, (Add, Mul)):
-        right_code = naive(op.right)
-        left_code = naive(op.left)
+        right_code = naive_compile(op.right)
+        left_code = naive_compile(op.left)
         opcode = {Add: X86.Add, Mul: X86.Mul}[type(op)]
         return [
             *right_code,
@@ -515,9 +515,9 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval_exp(exp), 21)
 
 
-class NaiveTests(unittest.TestCase):
+class NaiveCompilerTests(unittest.TestCase):
     def _alloc(self, exp):
-        x86 = naive(exp)
+        x86 = naive_compile(exp)
         return [str(op) for op in x86]
 
     def test_const(self):
@@ -967,9 +967,9 @@ class BaseEndToEndTests:
         self.assertEqual(sim.reg(RAX), 21)
 
 
-class NaiveEndToEndTests(BaseEndToEndTests, unittest.TestCase):
+class NaiveCompilerEndToEndTests(BaseEndToEndTests, unittest.TestCase):
     def _compile(self, exp):
-        return naive(exp)
+        return naive_compile(exp)
 
 
 class DDCGEndToEndTests(BaseEndToEndTests, unittest.TestCase):
