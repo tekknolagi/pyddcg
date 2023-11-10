@@ -968,7 +968,13 @@ class SimTests(unittest.TestCase):
 
 class BaseEndToEndTests:
     def _run(self, exp):
-        raise NotImplementedError("exercise your custom compiler!")
+        x86 = self._compile(exp)
+        sim = Simulator()
+        sim.load(x86)
+        sim.run()
+        self.assertEqual(sim.reg(RAX), eval_exp(exp))
+        assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
+        return sim
 
     def test_const(self):
         sim = self._run(Const(123))
@@ -993,48 +999,31 @@ class BaseEndToEndTests:
 
 
 class NaiveEndToEndTests(BaseEndToEndTests, unittest.TestCase):
-    def _run(self, exp):
-        x86 = naive(exp)
-        sim = Simulator()
-        sim.load(x86)
-        sim.run()
-        self.assertEqual(sim.reg(RAX), eval_exp(exp))
-        assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
-        return sim
+    def _compile(self, exp):
+        return naive(exp)
 
 
 class DDCGEndToEndTests(BaseEndToEndTests, unittest.TestCase):
-    def _run(self, exp):
+    def _compile(self, exp):
         gen = DDCG()
         gen.compile(exp)
-        sim = Simulator()
-        sim.load(gen.code)
-        sim.run()
-        self.assertEqual(sim.reg(RAX), eval_exp(exp))
-        assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
-        return sim
+        return gen.code
 
 
 class DDCGStackEndToEndTests(BaseEndToEndTests, unittest.TestCase):
-    def _run(self, exp):
+    def _compile(self, exp):
         gen = DDCGStack()
         gen.compile(exp)
-        sim = Simulator()
-        sim.load(gen.code)
-        sim.run()
-        self.assertEqual(sim.reg(RAX), eval_exp(exp))
-        assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
-        return sim
+        return gen.code
 
     def test_add_deep(self):
         # This tests pushing and popping beyond the limits of our virtual
         # stack.
         assert len(STACK_REGS) == 2
         exp = Add(Const(2), Add(Const(3), Add(Const(4), Const(5))))
-        gen = DDCGStack()
-        gen.compile(exp)
+        x86 = self._compile(exp)
         sim = Simulator()
-        sim.load(gen.code)
+        sim.load(x86)
         sim.run()
         self.assertEqual(sim.reg(RAX), eval_exp(exp))
         assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
