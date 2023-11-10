@@ -361,11 +361,10 @@ class DDCGStack:
 class Simulator:
     def __init__(self):
         self.regs = [0] * 16
-        # TODO(max): Represent memory as contiguous array with RSP pointing at
-        # middle or something
-        self.stack = bytearray([0] * 256)
+        self.memory = bytearray([0] * 256)
         self.code = []
-        self.regs[RSP.index] = -8
+        self.regs[RSP.index] = len(self.memory) // 2
+        assert self.reg(RSP) % 8 == 0
 
     def load(self, code):
         self.code = code
@@ -377,38 +376,34 @@ class Simulator:
     def reg(self, reg):
         return self.regs[reg.index]
 
-    def stack_write_imm(self, idx, imm):
-        assert idx < 0, "Cannot read before stack frame"
-        # The stack is backwards/upside-down...
-        idx = -idx
+    def memory_write(self, idx, value, nbytes):
+        value_bytes = value.to_bytes(nbytes, byteorder="little", signed=True)
+        self.memory[idx : idx + nbytes] = value_bytes
+
+    def memory_write_imm(self, idx, imm):
         bs = imm.as_bytes()
         assert imm.size() == len(bs)
-        self.stack[idx : idx + imm.size()] = bs
+        self.memory[idx : idx + imm.size()] = bs
 
-    def stack_write(self, idx, value, nbytes):
-        assert idx < 0, "Cannot read before stack frame"
-        # The stack is backwards/upside-down...
-        idx = -idx
-        bs = value.to_bytes(nbytes, byteorder="little", signed=True)
-        self.stack[idx : idx + nbytes] = bs
-
-    def stack_read(self, idx, nbytes, signed=False):
-        assert idx < 0, "Cannot read before stack frame"
-        # The stack is backwards/upside-down...
-        idx = -idx
+    def memory_read(self, idx, nbytes, signed=False):
         return int.from_bytes(
-            self.stack[idx : idx + nbytes], byteorder="little", signed=signed
+            self.memory[idx : idx + nbytes], byteorder="little", signed=signed
         )
 
     def stack_push(self, value):
         rsp = self.reg(RSP)
-        self.stack_write(rsp, value, nbytes=8)
-        self.regs[RSP.index] -= 8
+        nbytes = 8
+        value_bytes = value.to_bytes(nbytes, byteorder="little", signed=True)
+        self.memory[rsp : rsp + nbytes] = value_bytes
+        self.regs[RSP.index] -= nbytes
 
-    def stack_pop(self, value):
-        self.regs[RSP.index] += 8
+    def stack_pop(self):
+        nbytes = 8
+        self.regs[RSP.index] += nbytes
         rsp = self.reg(RSP)
-        return self.stack_read(rsp, nbytes=8)
+        return int.from_bytes(
+            self.memory[rsp : rsp + nbytes], byteorder="little", signed=False
+        )
 
     def run_one(self, op):
         if isinstance(op, X86.Mov):
@@ -421,17 +416,21 @@ class Simulator:
                     assert isinstance(
                         op.src, BaseDisp
                     ), "more complex memory not supported"
+                    addr = self.reg(op.src.base) + op.src.disp
                     # TODO(max): Get read size from register size
-                    self.regs[op.dst.index] = self.stack_read(op.src.disp, nbytes=8)
+                    self.regs[op.dst.index] = self.memory_read(addr, nbytes=8)
                 else:
                     assert isinstance(op.src, Imm), "non-imm src unsupported"
             elif isinstance(op.dst, Mem):
                 assert isinstance(op.dst, BaseDisp), "more complex memory not supported"
                 assert op.dst.base == RSP, "non-stack memory unsupported"
+                addr = self.reg(op.dst.base) + op.dst.disp
                 if isinstance(op.src, Imm):
-                    self.stack_write_imm(op.dst.disp, op.src)
+                    self.memory_write_imm(addr, op.src)
                 elif isinstance(op.src, Reg):
-                    self.stack_write(op.dst.disp, self.reg(op.src), nbytes=8)
+                    value = self.reg(op.src)
+                    # TODO(max): Get write size from register size
+                    self.memory_write(addr, value, nbytes=8)
                 else:
                     raise NotImplementedError("non-imm src")
             else:
@@ -444,7 +443,7 @@ class Simulator:
             elif isinstance(op.src, Mem):
                 assert isinstance(op.src, BaseDisp), "more complex memory not supported"
                 assert op.src.base == RSP, "non-stack memory unsupported"
-                self.regs[op.dst.index] = self.reg(op.dst) + self.stack_read(
+                self.regs[op.dst.index] = self.reg(op.dst) + self.memory_read(
                     op.src.disp, nbytes=8
                 )
             else:
@@ -457,7 +456,7 @@ class Simulator:
             elif isinstance(op.src, Mem):
                 assert isinstance(op.src, BaseDisp), "more complex memory not supported"
                 assert op.src.base == RSP, "non-stack memory unsupported"
-                self.regs[op.dst.index] = self.reg(op.dst) * self.stack_read(
+                self.regs[op.dst.index] = self.reg(op.dst) * self.memory_read(
                     op.src.disp, nbytes=8
                 )
             else:
@@ -472,7 +471,7 @@ class Simulator:
                 raise NotImplementedError("push with non-imm")
         elif isinstance(op, X86.Pop):
             if isinstance(op.dst, Reg):
-                value = self.stack_pop(op.dst)
+                value = self.stack_pop()
                 self.regs[op.dst.index] = value
             else:
                 raise NotImplementedError("pop with non-reg")
@@ -751,7 +750,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) + off, nbytes), val)
 
     def test_mov_stack_negative_imm8(self):
         off = -8
@@ -764,7 +763,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes, signed=True), val)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) + off, nbytes, signed=True), val)
 
     def test_mov_stack_imm16(self):
         off = -8
@@ -777,7 +776,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) + off, nbytes), val)
 
     def test_mov_stack_negative_imm16(self):
         off = -8
@@ -790,7 +789,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes, signed=True), val)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) + off, nbytes, signed=True), val)
 
     def test_mov_stack_imm32(self):
         off = -8
@@ -803,7 +802,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) + off, nbytes), val)
 
     def test_mov_stack_negative_imm32(self):
         off = -8
@@ -816,7 +815,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes, signed=True), val)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) + off, nbytes, signed=True), val)
 
     def test_mov_stack_imm64(self):
         off = -8
@@ -829,7 +828,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) + off, nbytes), val)
 
     def test_mov_stack_negative_imm64(self):
         off = -8
@@ -842,7 +841,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes, signed=True), val)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) + off, nbytes, signed=True), val)
 
     # TODO(max): Test misaligned reads and writes
     # TODO(max): Test overlapping reads and writes
@@ -859,7 +858,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) + off, nbytes), val)
 
     def test_add_reg_reg(self):
         sim = Simulator()
@@ -887,10 +886,6 @@ class SimTests(unittest.TestCase):
         self.assertEqual(sim.reg(RAX), 12)
         self.assertEqual(sim.reg(RCX), 4)
 
-    def test_rsp_points_to_beginning_of_frame(self):
-        sim = Simulator()
-        self.assertEqual(sim.reg(RSP), -8)
-
     def test_push_imm(self):
         off = -8
         nbytes = 8
@@ -901,9 +896,10 @@ class SimTests(unittest.TestCase):
                 X86.Push(Imm(val)),
             ]
         )
+        rsp_before = sim.reg(RSP)
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
-        self.assertEqual(sim.reg(RSP), -16)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) - off, nbytes), val)
+        self.assertEqual(sim.reg(RSP), rsp_before - 8)
 
     def test_push_reg(self):
         off = -8
@@ -916,15 +912,15 @@ class SimTests(unittest.TestCase):
                 X86.Push(RAX),
             ]
         )
+        rsp_before = sim.reg(RSP)
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
-        self.assertEqual(sim.reg(RSP), -16)
+        self.assertEqual(sim.memory_read(sim.reg(RSP) - off, nbytes), val)
+        self.assertEqual(sim.reg(RSP), rsp_before - 8)
 
     def test_pop_reg(self):
-        off = -8
-        nbytes = 8
         val = 3
         sim = Simulator()
+        rsp_before = sim.reg(RSP)
         sim.stack_push(val)
         sim.load(
             [
@@ -932,8 +928,7 @@ class SimTests(unittest.TestCase):
             ]
         )
         sim.run()
-        self.assertEqual(sim.stack_read(off, nbytes), val)
-        self.assertEqual(sim.reg(RSP), -8)
+        self.assertEqual(sim.reg(RSP), rsp_before)
         self.assertEqual(sim.reg(RAX), val)
 
 
@@ -969,7 +964,7 @@ class NaiveEndToEndTests(BaseEndToEndTests, unittest.TestCase):
         sim = Simulator()
         sim.load(x86)
         sim.run()
-        assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
+        assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
         return sim
 
 
@@ -980,7 +975,7 @@ class DDCGEndToEndTests(BaseEndToEndTests, unittest.TestCase):
         sim = Simulator()
         sim.load(gen.code)
         sim.run()
-        assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
+        assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
         return sim
 
 
@@ -991,7 +986,7 @@ class DDCGStackEndToEndTests(BaseEndToEndTests, unittest.TestCase):
         sim = Simulator()
         sim.load(gen.code)
         sim.run()
-        assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
+        assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
         return sim
 
     def test_add_deep(self):
@@ -1004,7 +999,7 @@ class DDCGStackEndToEndTests(BaseEndToEndTests, unittest.TestCase):
         sim = Simulator()
         sim.load(gen.code)
         sim.run()
-        assert len(sim.stack) == 256, f"stack size changed: {len(sim.stack)}"
+        assert len(sim.memory) == 256, f"memory size changed: {len(sim.memory)}"
         self.assertEqual(sim.reg(RAX), 14)
 
 
