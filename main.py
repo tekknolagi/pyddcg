@@ -591,6 +591,27 @@ class NaiveCompilerTests(unittest.TestCase):
             ],
         )
 
+    def test_add_deep(self):
+        exp = Add(Const(2), Add(Const(3), Add(Const(4), Const(5))))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Mov(dst=rax, src=Imm(5))",
+                "X86.Push(src=rax)",
+                "X86.Mov(dst=rax, src=Imm(4))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Push(src=rax)",
+                "X86.Mov(dst=rax, src=Imm(3))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Push(src=rax)",
+                "X86.Mov(dst=rax, src=Imm(2))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+            ],
+        )
+
 
 class DDCGTests(unittest.TestCase):
     def _alloc(self, exp):
@@ -647,6 +668,24 @@ class DDCGTests(unittest.TestCase):
                 "X86.Add(dst=rax, src=rcx)",
                 "X86.Pop(dst=rcx)",
                 "X86.Mul(dst=rax, src=rcx)",
+            ],
+        )
+
+    def test_add_deep(self):
+        exp = Add(Const(2), Add(Const(3), Add(Const(4), Const(5))))
+        self.assertEqual(
+            self._alloc(exp),
+            [
+                "X86.Push(src=Imm(2))",
+                "X86.Push(src=Imm(3))",
+                "X86.Push(src=Imm(4))",
+                "X86.Mov(dst=rax, src=Imm(5))",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
+                "X86.Pop(dst=rcx)",
+                "X86.Add(dst=rax, src=rcx)",
             ],
         )
 
