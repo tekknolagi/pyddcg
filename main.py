@@ -495,6 +495,8 @@ class Simulator:
                 raise NotImplementedError(f"only reg dst is supported: {op.dst}")
             if isinstance(op.src, Reg):
                 self.regs[op.dst.index] = self.reg(op.dst) + self.reg(op.src)
+            elif isinstance(op.src, Imm):
+                self.regs[op.dst.index] = self.reg(op.dst) + op.src.value
             elif isinstance(op.src, Mem):
                 assert isinstance(op.src, BaseDisp), "more complex memory not supported"
                 assert op.src.base == RSP, "non-stack memory unsupported"
@@ -508,6 +510,8 @@ class Simulator:
                 raise NotImplementedError(f"only reg dst is supported: {op.dst}")
             if isinstance(op.src, Reg):
                 self.regs[op.dst.index] = self.reg(op.dst) * self.reg(op.src)
+            elif isinstance(op.src, Imm):
+                self.regs[op.dst.index] = self.reg(op.dst) * op.src.value
             elif isinstance(op.src, Mem):
                 assert isinstance(op.src, BaseDisp), "more complex memory not supported"
                 assert op.src.base == RSP, "non-stack memory unsupported"
@@ -1107,6 +1111,30 @@ class SimTests(unittest.TestCase):
         sim.run()
         self.assertEqual(sim.reg(RSP), rsp_before)
         self.assertEqual(sim.reg(RAX), val)
+
+    def test_add_reg_imm(self):
+        reg = R8
+        sim = Simulator()
+        sim.regs[reg.index] = 3
+        sim.load(
+            [
+                X86.Add(reg, Imm(4)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.reg(reg), 7)
+
+    def test_mul_reg_imm(self):
+        reg = R8
+        sim = Simulator()
+        sim.regs[reg.index] = 3
+        sim.load(
+            [
+                X86.Mul(reg, Imm(4)),
+            ]
+        )
+        sim.run()
+        self.assertEqual(sim.reg(reg), 12)
 
 
 class BaseEndToEndTests:
