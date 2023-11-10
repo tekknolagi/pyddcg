@@ -310,20 +310,27 @@ class DelayedDDCG:
         result = self._compile(exp)
         self.code.append(X86.Mov(RAX, result))
 
+    def _emit_as_register(self, op):
+        if isinstance(op, Reg):
+            return op
+        result = self._allocate_register()
+        self.code.append(X86.Mov(result, op))
+        return result
+
     def _compile(self, exp):
         tmp = RCX
         if isinstance(exp, Const):
-            result = self._allocate_register()
-            self.code.append(X86.Mov(result, Imm(exp.value)))
-            return result
+            return Imm(exp.value)
         elif isinstance(exp, Add):
             lhs = self._compile(exp.left)
+            lhs = self._emit_as_register(lhs)
             rhs = self._compile(exp.right)
             self.code.append(X86.Add(lhs, rhs))
             self._free_register(rhs)
             return lhs
         elif isinstance(exp, Mul):
             lhs = self._compile(exp.left)
+            lhs = self._emit_as_register(lhs)
             rhs = self._compile(exp.right)
             self.code.append(X86.Mul(lhs, rhs))
             self._free_register(rhs)
@@ -751,8 +758,7 @@ class DelayedDDCGTests(unittest.TestCase):
         self.assertEqual(
             self._alloc(exp),
             [
-                "X86.Mov(dst=r8, src=Imm(2))",
-                "X86.Mov(dst=rax, src=r8)",
+                "X86.Mov(dst=rax, src=Imm(2))",
             ],
         )
 
@@ -762,8 +768,7 @@ class DelayedDDCGTests(unittest.TestCase):
             self._alloc(exp),
             [
                 "X86.Mov(dst=r8, src=Imm(2))",
-                "X86.Mov(dst=r9, src=Imm(3))",
-                "X86.Add(dst=r8, src=r9)",
+                "X86.Add(dst=r8, src=Imm(3))",
                 "X86.Mov(dst=rax, src=r8)",
             ],
         )
@@ -774,8 +779,7 @@ class DelayedDDCGTests(unittest.TestCase):
             self._alloc(exp),
             [
                 "X86.Mov(dst=r8, src=Imm(2))",
-                "X86.Mov(dst=r9, src=Imm(3))",
-                "X86.Mul(dst=r8, src=r9)",
+                "X86.Mul(dst=r8, src=Imm(3))",
                 "X86.Mov(dst=rax, src=r8)",
             ],
         )
@@ -789,11 +793,9 @@ class DelayedDDCGTests(unittest.TestCase):
             self._alloc(exp),
             [
                 "X86.Mov(dst=r8, src=Imm(1))",
-                "X86.Mov(dst=r9, src=Imm(2))",
-                "X86.Add(dst=r8, src=r9)",
+                "X86.Add(dst=r8, src=Imm(2))",
                 "X86.Mov(dst=r9, src=Imm(3))",
-                "X86.Mov(dst=r10, src=Imm(4))",
-                "X86.Add(dst=r9, src=r10)",
+                "X86.Add(dst=r9, src=Imm(4))",
                 "X86.Mul(dst=r8, src=r9)",
                 "X86.Mov(dst=rax, src=r8)",
             ],
@@ -807,8 +809,7 @@ class DelayedDDCGTests(unittest.TestCase):
                 "X86.Mov(dst=r8, src=Imm(2))",
                 "X86.Mov(dst=r9, src=Imm(3))",
                 "X86.Mov(dst=r10, src=Imm(4))",
-                "X86.Mov(dst=r11, src=Imm(5))",
-                "X86.Add(dst=r10, src=r11)",
+                "X86.Add(dst=r10, src=Imm(5))",
                 "X86.Add(dst=r9, src=r10)",
                 "X86.Add(dst=r8, src=r9)",
                 "X86.Mov(dst=rax, src=r8)",
