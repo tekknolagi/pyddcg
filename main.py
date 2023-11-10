@@ -304,11 +304,13 @@ class DelayedDDCG:
         raise Exception("could not allocate register")
 
     def _free_register(self, reg):
+        assert isinstance(reg, Reg)
         self.free_registers[reg] = True
 
     def compile(self, exp):
         result = self._compile(exp)
         self.code.append(X86.Mov(RAX, result))
+        return RAX
 
     def _emit_as_register(self, op):
         if isinstance(op, Reg):
@@ -324,15 +326,23 @@ class DelayedDDCG:
             lhs = self._compile(exp.left)
             lhs = self._emit_as_register(lhs)
             rhs = self._compile(exp.right)
-            self.code.append(X86.Add(lhs, rhs))
-            self._free_register(rhs)
+            if isinstance(rhs, Imm) and rhs.value < 0x100:
+                self.code.append(X86.Add(lhs, rhs))
+            else:
+                rhs = self._emit_as_register(rhs)
+                self.code.append(X86.Add(lhs, rhs))
+                self._free_register(rhs)
             return lhs
         elif isinstance(exp, Mul):
             lhs = self._compile(exp.left)
             lhs = self._emit_as_register(lhs)
             rhs = self._compile(exp.right)
-            self.code.append(X86.Mul(lhs, rhs))
-            self._free_register(rhs)
+            if isinstance(rhs, Imm) and rhs.value < 0x100:
+                self.code.append(X86.Mul(lhs, rhs))
+            else:
+                rhs = self._emit_as_register(rhs)
+                self.code.append(X86.Mul(lhs, rhs))
+                self._free_register(rhs)
             return lhs
         else:
             raise NotImplementedError(exp)
