@@ -161,14 +161,10 @@ class Imm(Operand):
 
     def size(self):
         bl = self.value.bit_length()
-        if bl <= 8:
-            return 8
-        if bl <= 16:
-            return 16
-        if bl <= 32:
-            return 32
-        if bl <= 64:
-            return 64
+        sizes = [8, 16, 32, 64]
+        for size in sizes:
+            if bl <= size:
+                return size
         raise NotImplementedError(f"const {self.value} too big")
 
     def as_bytes(self):
