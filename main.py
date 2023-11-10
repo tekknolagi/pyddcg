@@ -207,6 +207,7 @@ class X86:
 
 
 def naive_compile(exp):
+    tmp = RCX
     if isinstance(exp, Const):
         return [X86.Mov(RAX, Imm(exp.value))]
     elif isinstance(exp, Add):
@@ -216,8 +217,8 @@ def naive_compile(exp):
             *right_code,
             X86.Push(RAX),
             *left_code,
-            X86.Pop(RCX),
-            X86.Add(RAX, RCX),
+            X86.Pop(tmp),
+            X86.Add(RAX, tmp),
         ]
     elif isinstance(exp, Mul):
         right_code = naive_compile(exp.right)
@@ -226,8 +227,8 @@ def naive_compile(exp):
             *right_code,
             X86.Push(RAX),
             *left_code,
-            X86.Pop(RCX),
-            X86.Mul(RAX, RCX),
+            X86.Pop(tmp),
+            X86.Mul(RAX, tmp),
         ]
     else:
         raise NotImplementedError(f"unexpected exp {exp}")
