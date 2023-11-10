@@ -219,8 +219,6 @@ def naive(op):
             *right_code,
             X86.Push(RAX),
             *left_code,
-            # TODO(max): Use [RSP] but need to set up stack the right way
-            # (as array with RSP pointing into the middle) before that works
             X86.Pop(RCX),
             opcode(RAX, RCX),
         ]
