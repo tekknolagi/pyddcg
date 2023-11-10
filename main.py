@@ -318,7 +318,6 @@ class DelayedDDCG:
         return result
 
     def _compile(self, exp):
-        tmp = RCX
         if isinstance(exp, Const):
             return Imm(exp.value)
         elif isinstance(exp, Add):
