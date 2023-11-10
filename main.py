@@ -489,6 +489,10 @@ class RenderTests(IrTests):
         exp = Add(Const(2), Const(3))
         self.assertEqual(repr(exp), "v2 = Add v0, v1")
 
+    def test_mul(self):
+        exp = Mul(Const(2), Const(3))
+        self.assertEqual(repr(exp), "v2 = Mul v0, v1")
+
 
 class EvalTests(unittest.TestCase):
     def test_const(self):
