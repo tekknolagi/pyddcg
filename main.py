@@ -83,22 +83,6 @@ def eval_exp(exp):
         raise NotImplementedError(f"unexpected exp {exp}")
 
 
-def topo(self):
-    # topological order all of the children in the graph
-    topo = []
-    visited = set()
-
-    def build_topo(v):
-        if v not in visited:
-            visited.add(v)
-            for child in v.children():
-                build_topo(child)
-            topo.append(v)
-
-    build_topo(self)
-    return topo
-
-
 x86 = dataclass(eq=True, frozen=True)
 
 
@@ -526,24 +510,6 @@ class EvalTests(unittest.TestCase):
             Add(Const(3), Const(4)),
         )
         self.assertEqual(eval_exp(exp), 21)
-
-
-class TopoTests(IrTests):
-    def _topo(self, exp):
-        ops = topo(exp)
-        return [str(op) for op in ops]
-
-    def test_const(self):
-        exp = Const(2)
-        self.assertEqual(self._topo(exp), ["v0 = 2"])
-
-    def test_add(self):
-        exp = Add(Const(2), Const(3))
-        self.assertEqual(self._topo(exp), ["v0 = 2", "v1 = 3", "v2 = Add v0, v1"])
-
-    def test_mul(self):
-        exp = Mul(Const(2), Const(3))
-        self.assertEqual(self._topo(exp), ["v0 = 2", "v1 = 3", "v2 = Mul v0, v1"])
 
 
 class NaiveTests(unittest.TestCase):
