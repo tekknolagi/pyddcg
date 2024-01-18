@@ -193,6 +193,11 @@ class X86:
         src: Operand
 
     @x86
+    class Sub(X86Instr):
+        dst: Operand
+        src: Operand
+
+    @x86
     class Mul(X86Instr):
         dst: Operand
         src: Operand
@@ -309,14 +314,10 @@ class DelayedDDCG:
         self.code = []
         self.free_registers = {reg: True for reg in REGS}
 
-    def _allocate_register(self):
-        for reg in REGS:
-            if self.free_registers[reg]:
-                self.free_registers[reg] = False
-                return reg
-        raise Exception("could not allocate register")
-
     def _free_register(self, reg):
+        if isinstance(reg, Mem):
+            self.code.append(X86.Sub(RSP, 8))
+            return
         assert isinstance(reg, Reg)
         self.free_registers[reg] = True
 
@@ -326,9 +327,14 @@ class DelayedDDCG:
     def _emit_as_register(self, op):
         if isinstance(op, Reg):
             return op
-        result = self._allocate_register()
-        self.code.append(X86.Mov(result, op))
-        return result
+        # Try and allocate a register
+        for reg in REGS:
+            if self.free_registers[reg]:
+                self.free_registers[reg] = False
+                self.code.append(X86.Mov(reg, op))
+                return reg
+        self.code.append(X86.Push(op))
+        return BaseDisp(RSP, 0)
 
     def _compile(self, exp, dst):
         if isinstance(exp, Const):
@@ -831,18 +837,22 @@ class DelayedDDCGTests(unittest.TestCase):
             ],
         )
 
-    def test_add_deep(self):
-        exp = Add(Const(2), Add(Const(3), Add(Const(4), Const(5))))
+    def test_add_deep_right(self):
+        exp = Add(Const(2), Add(Const(3), Add(Const(4), Add(Const(5), Const(6)))))
         self.assertEqual(
             self._alloc(exp),
-            [
-                "X86.Mov(dst=rax, src=Imm(2))",
-                "X86.Mov(dst=r8, src=Imm(3))",
-                "X86.Mov(dst=r9, src=Imm(4))",
-                "X86.Add(dst=r9, src=Imm(5))",
-                "X86.Add(dst=r8, src=r9)",
-                "X86.Add(dst=rax, src=r8)",
-            ],
+            [],
+            )
+
+    def test_add_deep_left(self):
+        exp = Add(Add(Add(Add(Const(2), Const(3)), Const(4)), Const(5)), Const(6))
+        self.assertEqual(
+            self._alloc(exp),
+            ['X86.Mov(dst=rax, src=Imm(2))',
+             'X86.Add(dst=rax, src=Imm(3))',
+             'X86.Add(dst=rax, src=Imm(4))',
+             'X86.Add(dst=rax, src=Imm(5))',
+             'X86.Add(dst=rax, src=Imm(6))']
         )
 
 
